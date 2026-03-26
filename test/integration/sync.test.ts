@@ -51,6 +51,8 @@ describe("performBirthdaySync", () => {
         return jsonResponse({
           data: [
             { id: 10, first_name: "Alex", last_name: "Burgess", status: "active", birth_date: "1992-05-11" },
+            { id: 13, first_name: "Zoe", last_name: "Adams", status: "active" },
+            { id: 14, first_name: "Aaron", last_name: "Young", status: "active", birth_date: "" },
             { id: 11, first_name: "Manager", last_name: "Person", role: "manager", status: "active", birth_date: "1980-01-01" },
             { id: 12, first_name: "Inactive", last_name: "User", status: "inactive", birth_date: "1988-12-12" }
           ]
@@ -76,11 +78,28 @@ describe("performBirthdaySync", () => {
     expect(snapshot.lastSyncedAt).not.toBeNull();
     expect(Object.keys(snapshot.companies)).toEqual(["1", "2"]);
     expect(snapshot.companies["1"].people).toHaveLength(1);
-    expect(snapshot.companies["1"].activeEmployeeCount).toBe(1);
-    expect(snapshot.companies["1"].fetchedUserCount).toBe(3);
+    expect(snapshot.companies["1"].activeEmployeeCount).toBe(3);
+    expect(snapshot.companies["1"].fetchedUserCount).toBe(5);
     expect(snapshot.companies["1"].ics).toContain("Alex Burgess's");
+    expect(snapshot.companies["1"].missingBirthdayPeople).toEqual([
+      {
+        companyId: "1",
+        userId: "14",
+        firstName: "Aaron",
+        lastName: "Young",
+        fullName: "Aaron Young"
+      },
+      {
+        companyId: "1",
+        userId: "13",
+        firstName: "Zoe",
+        lastName: "Adams",
+        fullName: "Zoe Adams"
+      }
+    ]);
     expect(snapshot.companies["2"].ics).toContain("No Year's Birthday");
     expect(snapshot.companies["2"].ics).not.toContain("126th Birthday");
+    expect(snapshot.companies["2"].missingBirthdayPeople).toEqual([]);
 
     const persisted = JSON.parse(await fs.readFile(cacheFilePath, "utf8"));
     expect(persisted.lastSyncedAt).toBe(snapshot.lastSyncedAt);

@@ -40,6 +40,28 @@ function buildQrUrl(webcalUrl: string): string {
   return `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(webcalUrl)}`;
 }
 
+function compareMissingBirthdayPeople(
+  a: { firstName: string; lastName: string; fullName: string; companyName: string },
+  b: { firstName: string; lastName: string; fullName: string; companyName: string }
+): number {
+  const firstNameCompare = a.firstName.localeCompare(b.firstName, undefined, { sensitivity: "base" });
+  if (firstNameCompare !== 0) {
+    return firstNameCompare;
+  }
+
+  const lastNameCompare = a.lastName.localeCompare(b.lastName, undefined, { sensitivity: "base" });
+  if (lastNameCompare !== 0) {
+    return lastNameCompare;
+  }
+
+  const fullNameCompare = a.fullName.localeCompare(b.fullName, undefined, { sensitivity: "base" });
+  if (fullNameCompare !== 0) {
+    return fullNameCompare;
+  }
+
+  return a.companyName.localeCompare(b.companyName, undefined, { sensitivity: "base" });
+}
+
 export function createApp({ config, store }: AppDependencies) {
   const app = express();
   app.disable("x-powered-by");
@@ -65,11 +87,26 @@ export function createApp({ config, store }: AppDependencies) {
       })
       .sort((a, b) => a.companyName.localeCompare(b.companyName));
 
+    const missingBirthdayPeople = Object.values(snapshot.companies)
+      .flatMap((company) =>
+        (company.missingBirthdayPeople ?? []).map((person) => ({
+          companyId: company.companyId,
+          companyName: company.companyName,
+          userId: person.userId,
+          firstName: person.firstName,
+          lastName: person.lastName,
+          fullName: person.fullName
+        }))
+      )
+      .sort(compareMissingBirthdayPeople);
+
     return {
       lastSyncedAt: snapshot.lastSyncedAt,
       totalBirthdays: companies.reduce((sum, company) => sum + company.birthdaysOnCalendar, 0),
       totalActiveEmployees: companies.reduce((sum, company) => sum + company.activeEmployeeCount, 0),
       totalUsersFetched: companies.reduce((sum, company) => sum + company.fetchedUserCount, 0),
+      totalMissingBirthdays: missingBirthdayPeople.length,
+      missingBirthdayPeople,
       companies
     };
   }

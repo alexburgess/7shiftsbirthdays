@@ -9,11 +9,22 @@ interface LandingCompany {
   qrUrl: string;
 }
 
+interface LandingMissingBirthdayPerson {
+  companyId: string;
+  companyName: string;
+  userId: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+}
+
 interface LandingPageData {
   lastSyncedAt: string | null;
   totalBirthdays: number;
   totalActiveEmployees: number;
   totalUsersFetched: number;
+  totalMissingBirthdays: number;
+  missingBirthdayPeople: LandingMissingBirthdayPerson[];
   companies: LandingCompany[];
 }
 
@@ -75,6 +86,23 @@ function renderSubscriptionRows(companies: LandingCompany[]): string {
     .join("\n");
 }
 
+function renderMissingBirthdayRows(people: LandingMissingBirthdayPerson[]): string {
+  return people
+    .map((person) => {
+      const checkboxKey = escapeHtml(`missing:${person.companyId}:${person.userId}`);
+      const escapedName = escapeHtml(person.fullName);
+      const escapedCompanyName = escapeHtml(person.companyName);
+
+      return `<label class="missing-row">
+  <input class="missing-checkbox" type="checkbox" data-check-key="${checkboxKey}" />
+  <span class="missing-checkmark" aria-hidden="true"></span>
+  <span class="missing-name">${escapedName}</span>
+  <span class="missing-company">${escapedCompanyName}</span>
+</label>`;
+    })
+    .join("\n");
+}
+
 export function renderLandingPage(data: LandingPageData): string {
   const firstCompany = data.companies[0];
   const subscriptionRows = data.companies.length
@@ -92,6 +120,27 @@ export function renderLandingPage(data: LandingPageData): string {
     : "";
 
   const escapedLastSynced = escapeHtml(formatLastSynced(data.lastSyncedAt));
+  const missingBirthdaySection = data.totalMissingBirthdays
+    ? `<div id="missing-birthdays-modal" class="modal-shell" hidden>
+  <div class="modal-backdrop" data-close-missing-modal></div>
+  <section class="card missing-modal" role="dialog" aria-modal="true" aria-labelledby="missing-birthdays-title">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Admin Review</p>
+        <h2 id="missing-birthdays-title">Active 7shifters Missing Birthdays</h2>
+      </div>
+      <div class="modal-head-actions">
+        <p class="section-meta">${formatNumber(data.totalMissingBirthdays)} missing birthdays</p>
+        <button id="close-missing-button" class="button button-ghost" type="button">Close</button>
+      </div>
+    </div>
+    <p class="body-copy">Use the checkmarks to keep your place while you work through the list. They are only saved in this browser.</p>
+    <div class="missing-list">
+      ${renderMissingBirthdayRows(data.missingBirthdayPeople)}
+    </div>
+  </section>
+</div>`
+    : "";
 
   return `<!doctype html>
 <html lang="en">
@@ -115,18 +164,38 @@ export function renderLandingPage(data: LandingPageData): string {
       --shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
     }
 
+    html {
+      min-height: 100%;
+      background: var(--bg-2);
+      overscroll-behavior-y: none;
+    }
+
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
       color: var(--text);
       font-family: "Avenir Next", "Segoe UI", sans-serif;
+      position: relative;
+      isolation: isolate;
+      background: transparent;
+      line-height: 1.5;
+      min-height: 100vh;
+      overscroll-behavior-y: none;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
       background:
         radial-gradient(900px 500px at -5% -10%, rgba(73, 197, 182, 0.18), transparent 55%),
         radial-gradient(900px 500px at 110% 10%, rgba(247, 165, 49, 0.16), transparent 52%),
         linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
-      line-height: 1.5;
-      min-height: 100vh;
+      background-repeat: no-repeat;
+      background-size: cover;
     }
 
     .wrap {
@@ -278,6 +347,21 @@ export function renderLandingPage(data: LandingPageData): string {
       letter-spacing: -0.02em;
     }
 
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.55rem;
+    }
+
+    .section-meta {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
     .body-copy {
       margin: 0;
       color: var(--muted);
@@ -381,6 +465,105 @@ export function renderLandingPage(data: LandingPageData): string {
       font-size: 0.92rem;
     }
 
+    .modal-shell {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+
+    .modal-shell[hidden] {
+      display: none;
+    }
+
+    .modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(2, 6, 12, 0.72);
+      backdrop-filter: blur(8px);
+    }
+
+    .missing-modal {
+      position: relative;
+      z-index: 1;
+      width: min(960px, 100%);
+      max-height: min(82vh, 920px);
+      overflow: hidden;
+    }
+
+    .missing-list {
+      display: grid;
+      gap: 0.7rem;
+      margin-top: 1rem;
+      max-height: calc(min(82vh, 920px) - 170px);
+      overflow: auto;
+      padding-right: 0.15rem;
+    }
+
+    .modal-head-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .missing-row {
+      display: grid;
+      grid-template-columns: auto auto 1fr auto;
+      gap: 0.8rem;
+      align-items: center;
+      padding: 0.85rem 0.95rem;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.03);
+      cursor: pointer;
+    }
+
+    .missing-checkbox {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .missing-checkmark {
+      width: 22px;
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      border: 1px solid rgba(73, 197, 182, 0.32);
+      background: rgba(255, 255, 255, 0.02);
+      color: transparent;
+      transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+    }
+
+    .missing-checkbox:checked + .missing-checkmark {
+      color: #041218;
+      background: var(--accent-2);
+      border-color: var(--accent-2);
+    }
+
+    .missing-checkbox:checked + .missing-checkmark::before {
+      content: "✓";
+      font-size: 0.82rem;
+      font-weight: 800;
+    }
+
+    .missing-name {
+      font-weight: 700;
+    }
+
+    .missing-company {
+      color: var(--muted);
+      font-size: 0.92rem;
+      text-align: right;
+    }
+
     .empty-state {
       margin: 0;
       color: var(--muted);
@@ -397,6 +580,16 @@ export function renderLandingPage(data: LandingPageData): string {
       .url-row {
         grid-template-columns: 1fr;
       }
+
+      .missing-row {
+        grid-template-columns: auto auto 1fr;
+      }
+
+      .missing-company {
+        grid-column: 1 / -1;
+        padding-left: calc(22px + 0.8rem);
+        text-align: left;
+      }
     }
   </style>
 </head>
@@ -404,12 +597,18 @@ export function renderLandingPage(data: LandingPageData): string {
   <main class="wrap">
     <section class="hero">
       <div class="hero-copy">
-        <p class="eyebrow">Subscription Page</p>
         <h1>birthdaycalendar.me 🎈</h1>
-        <p class="sub">Subscribe the live birthday calendar in Apple Calendar or Google Calendar. Use the copy button for the exact feed URL, or use the iPhone quick subscribe tools to open Apple Calendar directly.</p>
+        <p class="sub">Subscribe the live birthday calendar in Apple Calendar or Google Calendar. Use the copy button for the exact feed URL, use the iPhone quick subscribe tools to open the Apple Calendar app directly, and review active 7shifters missing birthdays from the admin view.</p>
 
         <div class="hero-controls">
           <button id="manual-refresh-button" class="button button-primary" type="button">Manual Refresh</button>
+          ${
+            data.totalMissingBirthdays
+              ? `<button id="toggle-missing-button" class="button button-secondary" type="button">Show Missing Birthdays (${formatNumber(
+                  data.totalMissingBirthdays
+                )})</button>`
+              : ""
+          }
           <div id="refresh-status" class="status-pill">Last sync: ${escapedLastSynced}</div>
         </div>
 
@@ -458,11 +657,19 @@ export function renderLandingPage(data: LandingPageData): string {
         <p class="note">Manual refresh pulls the latest birthday data from 7shifts immediately and reloads this page when it completes.</p>
       </article>
     </section>
+
   </main>
+
+  ${missingBirthdaySection}
 
   <script>
     const refreshButton = document.getElementById("manual-refresh-button");
     const refreshStatus = document.getElementById("refresh-status");
+    const toggleMissingButton = document.getElementById("toggle-missing-button");
+    const missingBirthdaysModal = document.getElementById("missing-birthdays-modal");
+    const closeMissingButton = document.getElementById("close-missing-button");
+    const missingCheckboxes = Array.from(document.querySelectorAll("[data-check-key]"));
+    const missingBirthdayStorageKey = "birthdaycalendar-missing-birthday-checks";
 
     async function copyText(targetId, button) {
       const input = document.getElementById(targetId);
@@ -488,6 +695,78 @@ export function renderLandingPage(data: LandingPageData): string {
         copyText(button.getAttribute("data-copy-target"), button);
       });
     });
+
+    function loadMissingBirthdayChecks() {
+      try {
+        const raw = window.localStorage.getItem(missingBirthdayStorageKey);
+        return raw ? JSON.parse(raw) : {};
+      } catch {
+        return {};
+      }
+    }
+
+    function saveMissingBirthdayChecks(values) {
+      try {
+        window.localStorage.setItem(missingBirthdayStorageKey, JSON.stringify(values));
+      } catch {
+        // ignore storage failures and keep the UI usable
+      }
+    }
+
+    const missingBirthdayChecks = loadMissingBirthdayChecks();
+    missingCheckboxes.forEach((checkbox) => {
+      const key = checkbox.getAttribute("data-check-key");
+      checkbox.checked = Boolean(key && missingBirthdayChecks[key]);
+
+      checkbox.addEventListener("change", () => {
+        if (!key) {
+          return;
+        }
+        missingBirthdayChecks[key] = checkbox.checked;
+        saveMissingBirthdayChecks(missingBirthdayChecks);
+      });
+    });
+
+    function setMissingModalOpen(isOpen) {
+      if (!toggleMissingButton || !missingBirthdaysModal) {
+        return;
+      }
+
+      if (isOpen) {
+        missingBirthdaysModal.removeAttribute("hidden");
+        toggleMissingButton.textContent = "Hide Missing Birthdays";
+        document.body.style.overflow = "hidden";
+        return;
+      }
+
+      missingBirthdaysModal.setAttribute("hidden", "");
+      toggleMissingButton.textContent = "Show Missing Birthdays (${formatNumber(data.totalMissingBirthdays)})";
+      document.body.style.overflow = "";
+    }
+
+    if (toggleMissingButton && missingBirthdaysModal) {
+      toggleMissingButton.addEventListener("click", () => {
+        setMissingModalOpen(missingBirthdaysModal.hasAttribute("hidden"));
+      });
+
+      missingBirthdaysModal.querySelectorAll("[data-close-missing-modal]").forEach((node) => {
+        node.addEventListener("click", () => {
+          setMissingModalOpen(false);
+        });
+      });
+
+      if (closeMissingButton) {
+        closeMissingButton.addEventListener("click", () => {
+          setMissingModalOpen(false);
+        });
+      }
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !missingBirthdaysModal.hasAttribute("hidden")) {
+          setMissingModalOpen(false);
+        }
+      });
+    }
 
     refreshButton.addEventListener("click", async () => {
       refreshButton.disabled = true;

@@ -44,6 +44,15 @@ describe("HTTP routes", () => {
               birthYear: 1992
             }
           ],
+          missingBirthdayPeople: [
+            {
+              companyId: "123",
+              userId: "11",
+              firstName: "Casey",
+              lastName: "Stone",
+              fullName: "Casey Stone"
+            }
+          ],
           ics: "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n"
         }
       }
@@ -61,6 +70,9 @@ describe("HTTP routes", () => {
     expect(landing.text).toContain("birthdaycalendar.me");
     expect(landing.text).toContain("Manual Refresh");
     expect(landing.text).toContain("Copy URL");
+    expect(landing.text).toContain("Show Missing Birthdays (1)");
+    expect(landing.text).toContain("Casey Stone");
+    expect(landing.text).not.toContain("Subscription Page");
 
     const index = await request(app).get("/calendar/7shifts/birthdays");
     expect(index.status).toBe(200);

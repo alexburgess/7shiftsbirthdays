@@ -1,7 +1,7 @@
 import { AppConfig } from "../config.js";
 import { logger } from "../logger.js";
 import { CacheStore } from "../store/cacheStore.js";
-import { BirthdayPerson, CacheSnapshot, CompanySnapshot } from "../types.js";
+import { BirthdayPerson, CacheSnapshot, CompanySnapshot, MissingBirthdayPerson } from "../types.js";
 import { buildBirthdayCalendarIcs } from "../utils/ics.js";
 import { parseBirthDate } from "../utils/date.js";
 import { SevenShiftsClient, SevenShiftsUser } from "./sevenShiftsClient.js";
@@ -20,21 +20,42 @@ function getStringProperty(input: Record<string, unknown>, key: string): string 
 }
 
 function buildUserFullName(user: SevenShiftsUser): string {
+  return buildUserNameParts(user).fullName;
+}
+
+function buildUserNameParts(user: SevenShiftsUser): {
+  firstName: string;
+  lastName: string;
+  fullName: string;
+} {
   const firstName = getStringProperty(user, "first_name");
   const lastName = getStringProperty(user, "last_name");
   const displayName = getStringProperty(user, "name") || getStringProperty(user, "display_name");
 
   const fromParts = [firstName, lastName].filter(Boolean).join(" ").trim();
   if (fromParts) {
-    return fromParts;
+    return {
+      firstName: firstName ?? "",
+      lastName: lastName ?? "",
+      fullName: fromParts
+    };
   }
 
   if (displayName) {
-    return displayName;
+    const parts = displayName.split(/\s+/).filter(Boolean);
+    return {
+      firstName: parts[0] ?? "",
+      lastName: parts.slice(1).join(" "),
+      fullName: displayName
+    };
   }
 
   const id = user.id;
-  return `User ${String(id)}`;
+  return {
+    firstName: "User",
+    lastName: String(id),
+    fullName: `User ${String(id)}`
+  };
 }
 
 function isActiveEmployee(user: SevenShiftsUser): boolean {
@@ -83,6 +104,27 @@ function toBirthdayPerson(companyId: string, user: SevenShiftsUser): BirthdayPer
   };
 }
 
+function toMissingBirthdayPerson(companyId: string, user: SevenShiftsUser): MissingBirthdayPerson | null {
+  if (parseBirthDate(user.birth_date ?? user.date_of_birth)) {
+    return null;
+  }
+
+  const id = user.id;
+  if (typeof id !== "string" && typeof id !== "number") {
+    return null;
+  }
+
+  const name = buildUserNameParts(user);
+
+  return {
+    companyId,
+    userId: String(id),
+    firstName: name.firstName,
+    lastName: name.lastName,
+    fullName: name.fullName
+  };
+}
+
 function dedupePeople(people: BirthdayPerson[]): BirthdayPerson[] {
   const seen = new Set<string>();
   const output: BirthdayPerson[] = [];
@@ -107,10 +149,41 @@ function dedupePeople(people: BirthdayPerson[]): BirthdayPerson[] {
   });
 }
 
+function compareMissingBirthdayPeople(a: MissingBirthdayPerson, b: MissingBirthdayPerson): number {
+  const firstNameCompare = a.firstName.localeCompare(b.firstName, undefined, { sensitivity: "base" });
+  if (firstNameCompare !== 0) {
+    return firstNameCompare;
+  }
+
+  const lastNameCompare = a.lastName.localeCompare(b.lastName, undefined, { sensitivity: "base" });
+  if (lastNameCompare !== 0) {
+    return lastNameCompare;
+  }
+
+  return a.fullName.localeCompare(b.fullName, undefined, { sensitivity: "base" });
+}
+
+function dedupeMissingBirthdayPeople(people: MissingBirthdayPerson[]): MissingBirthdayPerson[] {
+  const seen = new Set<string>();
+  const output: MissingBirthdayPerson[] = [];
+
+  for (const person of people) {
+    const key = `${person.companyId}:${person.userId}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    output.push(person);
+  }
+
+  return output.sort(compareMissingBirthdayPeople);
+}
+
 function buildCompanySnapshot(
   companyId: string,
   companyName: string,
   people: BirthdayPerson[],
+  missingBirthdayPeople: MissingBirthdayPerson[],
   activeEmployeeCount: number,
   fetchedUserCount: number,
   config: AppConfig
@@ -119,6 +192,7 @@ function buildCompanySnapshot(
     companyId,
     companyName,
     people,
+    missingBirthdayPeople,
     activeEmployeeCount,
     fetchedUserCount,
     ics: buildBirthdayCalendarIcs(companyName, people, {
@@ -160,6 +234,11 @@ export async function performBirthdaySync(
         .map((user) => toBirthdayPerson(company.id, user))
         .filter((person): person is BirthdayPerson => person !== null)
     );
+    const missingBirthdayPeople = dedupeMissingBirthdayPeople(
+      activeUsers
+        .map((user) => toMissingBirthdayPerson(company.id, user))
+        .filter((person): person is MissingBirthdayPerson => person !== null)
+    );
 
     birthdayCount += people.length;
 
@@ -167,6 +246,7 @@ export async function performBirthdaySync(
       company.id,
       company.name,
       people,
+      missingBirthdayPeople,
       activeUsers.length,
       users.length,
       config
@@ -177,7 +257,8 @@ export async function performBirthdaySync(
       companyName: company.name,
       usersFetched: users.length,
       activeEmployees: activeUsers.length,
-      birthdaysIncluded: people.length
+      birthdaysIncluded: people.length,
+      missingBirthdays: missingBirthdayPeople.length
     });
   }
 

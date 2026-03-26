@@ -7,10 +7,19 @@ export interface BirthdayPerson {
   birthYear?: number;
 }
 
+export interface MissingBirthdayPerson {
+  companyId: string;
+  userId: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+}
+
 export interface CompanySnapshot {
   companyId: string;
   companyName: string;
   people: BirthdayPerson[];
+  missingBirthdayPeople?: MissingBirthdayPerson[];
   activeEmployeeCount?: number;
   fetchedUserCount?: number;
   ics: string;
