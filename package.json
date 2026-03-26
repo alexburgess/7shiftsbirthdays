@@ -1,0 +1,32 @@
+{
+  "name": "7shifts-birthday-calendar",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Public subscribable ICS feeds for 7shifts employee birthdays",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "sync": "tsx src/cli/sync.ts",
+    "sync:dist": "node dist/cli/sync.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run build && npm run test"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.13.10",
+    "@types/supertest": "^6.0.3",
+    "supertest": "^7.1.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.8"
+  }
+}

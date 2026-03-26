@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh 7shifts Birthday Calendar snapshot
+After=network.target
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/7shifts-birthday-calendar
+EnvironmentFile=/etc/7shifts-birthday-calendar.env
+ExecStart=/usr/bin/node /opt/7shifts-birthday-calendar/dist/cli/sync.js

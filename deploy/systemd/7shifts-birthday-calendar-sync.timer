@@ -1,0 +1,10 @@
+[Unit]
+Description=Run 7shifts birthday sync daily at 2:00 AM ET
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+Unit=7shifts-birthday-calendar-sync.service
+
+[Install]
+WantedBy=timers.target
