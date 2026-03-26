@@ -1,5 +1,5 @@
 import { BirthdayPerson } from "../types.js";
-import { computeAge, formatDateForIcs, normalizeBirthdayForYear, ordinal } from "./date.js";
+import { computeAge, formatDateForIcs, isUnknownBirthYear, normalizeBirthdayForYear, ordinal } from "./date.js";
 
 interface BuildIcsOptions {
   horizonYears: number;
@@ -53,7 +53,7 @@ function addDays(year: number, month: number, day: number, amount: number): { ye
 }
 
 export function buildBirthdaySummary(fullName: string, birthYear: number | undefined, eventYear: number): string {
-  if (birthYear !== undefined && birthYear !== 1900) {
+  if (birthYear !== undefined && !isUnknownBirthYear(birthYear)) {
     const age = computeAge(birthYear, eventYear);
     if (age !== undefined) {
       return `${fullName}'s ${ordinal(age)} Birthday`;

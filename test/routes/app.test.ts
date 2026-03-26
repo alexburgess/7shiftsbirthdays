@@ -72,6 +72,8 @@ describe("HTTP routes", () => {
     expect(landing.text).toContain("Copy URL");
     expect(landing.text).toContain("Show Missing Birthdays (1)");
     expect(landing.text).toContain("Casey Stone");
+    expect(landing.text).toContain("https://app.7shifts.com/employers/employee/11");
+    expect(landing.text).toContain("Open Profile");
     expect(landing.text).not.toContain("Subscription Page");
 
     const index = await request(app).get("/calendar/7shifts/birthdays");

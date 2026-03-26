@@ -3,7 +3,7 @@ import { logger } from "../logger.js";
 import { CacheStore } from "../store/cacheStore.js";
 import { BirthdayPerson, CacheSnapshot, CompanySnapshot, MissingBirthdayPerson } from "../types.js";
 import { buildBirthdayCalendarIcs } from "../utils/ics.js";
-import { parseBirthDate } from "../utils/date.js";
+import { isUnknownBirthYear, parseBirthDate } from "../utils/date.js";
 import { SevenShiftsClient, SevenShiftsUser } from "./sevenShiftsClient.js";
 
 export interface SyncResult {
@@ -99,8 +99,8 @@ function toBirthdayPerson(companyId: string, user: SevenShiftsUser): BirthdayPer
     fullName: buildUserFullName(user),
     month: parsed.month,
     day: parsed.day,
-    // 7shifts uses 1900 as a sentinel when the real birth year is unknown.
-    birthYear: parsed.birthYear === 1900 ? undefined : parsed.birthYear
+    // 7shifts sometimes stores placeholder years when the real birth year is unknown.
+    birthYear: isUnknownBirthYear(parsed.birthYear) ? undefined : parsed.birthYear
   };
 }
 

@@ -62,7 +62,7 @@ describe("performBirthdaySync", () => {
       if (url.includes("/company/2/users")) {
         return jsonResponse({
           data: [
-            { id: 20, first_name: "No", last_name: "Year", status: "active", date_of_birth: "1900-07-04" }
+            { id: 20, first_name: "No", last_name: "Year", status: "active", date_of_birth: "1910-07-04" }
           ]
         });
       }
@@ -98,7 +98,7 @@ describe("performBirthdaySync", () => {
       }
     ]);
     expect(snapshot.companies["2"].ics).toContain("No Year's Birthday");
-    expect(snapshot.companies["2"].ics).not.toContain("126th Birthday");
+    expect(snapshot.companies["2"].ics).not.toContain("116th Birthday");
     expect(snapshot.companies["2"].missingBirthdayPeople).toEqual([]);
 
     const persisted = JSON.parse(await fs.readFile(cacheFilePath, "utf8"));

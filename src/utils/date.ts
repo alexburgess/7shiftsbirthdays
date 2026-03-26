@@ -4,6 +4,10 @@ export interface ParsedBirthDate {
   birthYear?: number;
 }
 
+export function isUnknownBirthYear(birthYear: number | undefined): boolean {
+  return birthYear === 1900 || birthYear === 1910;
+}
+
 export function ordinal(value: number): string {
   const abs = Math.abs(value);
   const mod100 = abs % 100;

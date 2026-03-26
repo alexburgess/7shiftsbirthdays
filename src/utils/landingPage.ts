@@ -92,13 +92,21 @@ function renderMissingBirthdayRows(people: LandingMissingBirthdayPerson[]): stri
       const checkboxKey = escapeHtml(`missing:${person.companyId}:${person.userId}`);
       const escapedName = escapeHtml(person.fullName);
       const escapedCompanyName = escapeHtml(person.companyName);
+      const profileUrl = escapeHtml(
+        `https://app.7shifts.com/employers/employee/${encodeURIComponent(person.userId)}`
+      );
 
-      return `<label class="missing-row">
-  <input class="missing-checkbox" type="checkbox" data-check-key="${checkboxKey}" />
-  <span class="missing-checkmark" aria-hidden="true"></span>
-  <span class="missing-name">${escapedName}</span>
-  <span class="missing-company">${escapedCompanyName}</span>
-</label>`;
+      return `<article class="missing-row">
+  <label class="missing-toggle">
+    <input class="missing-checkbox" type="checkbox" data-check-key="${checkboxKey}" />
+    <span class="missing-checkmark" aria-hidden="true"></span>
+    <span class="missing-name">${escapedName}</span>
+  </label>
+  <div class="missing-actions">
+    <span class="missing-company">${escapedCompanyName}</span>
+    <a class="button button-ghost button-small" href="${profileUrl}" target="_blank" rel="noopener noreferrer">Open Profile</a>
+  </div>
+</article>`;
     })
     .join("\n");
 }
@@ -513,13 +521,21 @@ export function renderLandingPage(data: LandingPageData): string {
 
     .missing-row {
       display: grid;
-      grid-template-columns: auto auto 1fr auto;
+      grid-template-columns: minmax(0, 1fr) auto;
       gap: 0.8rem;
       align-items: center;
       padding: 0.85rem 0.95rem;
       border: 1px solid var(--border);
       border-radius: 16px;
       background: rgba(255, 255, 255, 0.03);
+    }
+
+    .missing-toggle {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: auto auto minmax(0, 1fr);
+      gap: 0.8rem;
+      align-items: center;
       cursor: pointer;
     }
 
@@ -556,12 +572,27 @@ export function renderLandingPage(data: LandingPageData): string {
 
     .missing-name {
       font-weight: 700;
+      min-width: 0;
     }
 
     .missing-company {
       color: var(--muted);
       font-size: 0.92rem;
       text-align: right;
+    }
+
+    .missing-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    .button-small {
+      min-height: 38px;
+      padding: 0.56rem 0.85rem;
+      font-size: 0.92rem;
     }
 
     .empty-state {
@@ -582,12 +613,20 @@ export function renderLandingPage(data: LandingPageData): string {
       }
 
       .missing-row {
-        grid-template-columns: auto auto 1fr;
+        grid-template-columns: 1fr;
+      }
+
+      .missing-toggle {
+        grid-template-columns: auto auto minmax(0, 1fr);
+      }
+
+      .missing-actions {
+        width: 100%;
+        justify-content: space-between;
+        padding-left: calc(22px + 0.8rem);
       }
 
       .missing-company {
-        grid-column: 1 / -1;
-        padding-left: calc(22px + 0.8rem);
         text-align: left;
       }
     }
