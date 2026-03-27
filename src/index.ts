@@ -33,6 +33,7 @@ async function bootstrap(): Promise<void> {
     logger.info("server_started", {
       port: config.port,
       pathPrefix: config.publicPathPrefix,
+      contactsPathPrefix: config.contactsPathPrefix,
       timezone: config.timezone,
       horizonYears: config.horizonYears
     });

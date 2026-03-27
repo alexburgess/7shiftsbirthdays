@@ -17,10 +17,14 @@ describe("HTTP routes", () => {
       port: 4000,
       baseUrl: "https://calendar.example.com",
       publicPathPrefix: "/calendar/7shifts/birthdays",
+      contactsPathPrefix: "/contacts/carddav",
+      contactsBookName: "7shifts Staff",
       timezone: "America/New_York",
       horizonYears: 10,
       sevenShiftsApiBaseUrl: "https://api.7shifts.com/v2",
       sevenShiftsAccessToken: "token",
+      privateAuthUsername: "admin",
+      privateAuthPassword: "secret",
       cacheFilePath: path.join(os.tmpdir(), "route-test-cache.json")
     };
 
@@ -30,6 +34,27 @@ describe("HTTP routes", () => {
       lastSyncedAt: "2026-03-17T00:00:00.000Z",
       timezone: "America/New_York",
       horizonYears: 10,
+      contacts: {
+        bookName: "7shifts Staff",
+        contacts: [
+          {
+            uid: "contact-1@7shifts-birthday-calendar",
+            firstName: "Alex",
+            lastName: "Burgess",
+            fullName: "Alex Burgess",
+            companyName: "Downtown",
+            companyNames: ["Downtown"],
+            email: "alex@example.com",
+            phone: "+15551234567",
+            birthday: {
+              year: 1992,
+              month: 5,
+              day: 11
+            },
+            rev: "2026-03-17T00:00:00.000Z"
+          }
+        ]
+      },
       companies: {
         "123": {
           companyId: "123",
@@ -68,13 +93,27 @@ describe("HTTP routes", () => {
     expect(landing.status).toBe(200);
     expect(landing.headers["content-type"]).toContain("text/html");
     expect(landing.text).toContain("birthdaycalendar.me");
-    expect(landing.text).toContain("Manual Refresh");
     expect(landing.text).toContain("Copy URL");
-    expect(landing.text).toContain("Show Missing Birthdays (1)");
-    expect(landing.text).toContain("Casey Stone");
-    expect(landing.text).toContain("https://app.7shifts.com/employers/employee/11");
-    expect(landing.text).toContain("Open Profile");
+    expect(landing.text).not.toContain("Manual Refresh");
+    expect(landing.text).not.toContain("Casey Stone");
+    expect(landing.text).not.toContain("CardDAV for iPhone Contacts");
     expect(landing.text).not.toContain("Subscription Page");
+
+    const adminUnauthorized = await request(app).get("/admin");
+    expect(adminUnauthorized.status).toBe(401);
+
+    const admin = await request(app).get("/admin").auth("admin", "secret");
+    expect(admin.status).toBe(200);
+    expect(admin.text).toContain("Manual Refresh");
+    expect(admin.text).toContain("Show Missing Birthdays (1)");
+    expect(admin.text).toContain("Casey Stone");
+    expect(admin.text).toContain("https://app.7shifts.com/employers/employee/11");
+    expect(admin.text).toContain("Open Profile");
+    expect(admin.text).toContain("Birthday Trends");
+    expect(admin.text).toContain("Most Popular Single Day");
+    expect(admin.text).toContain("By Month");
+    expect(admin.text).toContain("CardDAV for iPhone Contacts");
+    expect(admin.text).toContain("Copy Username");
 
     const index = await request(app).get("/calendar/7shifts/birthdays");
     expect(index.status).toBe(200);
@@ -89,5 +128,52 @@ describe("HTTP routes", () => {
 
     const missing = await request(app).get("/calendar/7shifts/birthdays/999.ics");
     expect(missing.status).toBe(404);
+
+    const unauthorizedRefresh = await request(app).post("/refresh");
+    expect(unauthorizedRefresh.status).toBe(401);
+
+    const contactUnauthorized = await request(app).get("/contacts/carddav/addressbooks/employees/contact-1%407shifts-birthday-calendar.vcf");
+    expect(contactUnauthorized.status).toBe(401);
+
+    const contact = await request(app)
+      .get("/contacts/carddav/addressbooks/employees/contact-1%407shifts-birthday-calendar.vcf")
+      .auth("admin", "secret");
+    expect(contact.status).toBe(200);
+    expect(contact.headers["content-type"]).toContain("text/vcard");
+    expect(contact.text).toContain("FN:Alex Burgess");
+    expect(contact.text).toContain("EMAIL:alex@example.com");
+
+    const propfindServer = app.listen(0);
+
+    try {
+      const address = propfindServer.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Unable to bind test server.");
+      }
+
+      const propfindResponse = await fetch(`http://127.0.0.1:${address.port}/contacts/carddav/addressbooks/employees/`, {
+        method: "PROPFIND",
+        headers: {
+          Authorization: `Basic ${Buffer.from("admin:secret").toString("base64")}`,
+          Depth: "1"
+        }
+      });
+
+      expect(propfindResponse.status).toBe(207);
+      expect(propfindResponse.headers.get("content-type")).toContain("application/xml");
+      const propfindBody = await propfindResponse.text();
+      expect(propfindBody).toContain("/contacts/carddav/addressbooks/employees/");
+      expect(propfindBody).toContain("contact-1@7shifts-birthday-calendar.vcf");
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        propfindServer.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      });
+    }
   });
 });

@@ -18,14 +18,52 @@ interface LandingMissingBirthdayPerson {
   fullName: string;
 }
 
+interface LandingBirthdayStatsBucket {
+  key: string;
+  label: string;
+  shortLabel: string;
+  count: number;
+}
+
+interface LandingMostPopularBirthdayDay {
+  label: string;
+  count: number;
+  tiedDays: number;
+  tiedLabels: string[];
+}
+
+interface LandingBirthdayFunStats {
+  referenceYear: number;
+  byMonth: LandingBirthdayStatsBucket[];
+  byWeek: LandingBirthdayStatsBucket[];
+  byWeekday: LandingBirthdayStatsBucket[];
+  busiestMonth: LandingBirthdayStatsBucket | null;
+  busiestWeek: LandingBirthdayStatsBucket | null;
+  busiestWeekday: LandingBirthdayStatsBucket | null;
+  mostPopularDay: LandingMostPopularBirthdayDay | null;
+}
+
+interface LandingCardDavInfo {
+  username: string;
+  serverUrl: string;
+  addressBookUrl: string;
+  bookName: string;
+}
+
 interface LandingPageData {
+  isAdmin: boolean;
+  adminPath: string;
+  refreshPath: string;
   lastSyncedAt: string | null;
   totalBirthdays: number;
   totalActiveEmployees: number;
   totalUsersFetched: number;
   totalMissingBirthdays: number;
+  totalContacts: number;
+  birthdayFunStats: LandingBirthdayFunStats;
   missingBirthdayPeople: LandingMissingBirthdayPerson[];
   companies: LandingCompany[];
+  cardDav: LandingCardDavInfo | null;
 }
 
 function escapeHtml(value: string): string {
@@ -54,6 +92,10 @@ function formatLastSynced(value: string | null): string {
   } catch {
     return value;
   }
+}
+
+function toJsonForScript(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
 function renderSubscriptionRows(companies: LandingCompany[]): string {
@@ -111,6 +153,185 @@ function renderMissingBirthdayRows(people: LandingMissingBirthdayPerson[]): stri
     .join("\n");
 }
 
+function renderFunStatsSection(stats: LandingBirthdayFunStats): string {
+  const tiedLabelsText =
+    stats.mostPopularDay && stats.mostPopularDay.tiedLabels.length > 0
+      ? ` · also tied with ${escapeHtml(stats.mostPopularDay.tiedLabels.join(", "))}`
+      : "";
+  const mostPopularDayText = stats.mostPopularDay
+    ? `${escapeHtml(stats.mostPopularDay.label)} · ${formatNumber(stats.mostPopularDay.count)} birthday${
+        stats.mostPopularDay.count === 1 ? "" : "s"
+      }${tiedLabelsText}`
+    : "No birthday data yet";
+
+  const busiestMonthText = stats.busiestMonth
+    ? `${escapeHtml(stats.busiestMonth.label)} · ${formatNumber(stats.busiestMonth.count)}`
+    : "No data yet";
+  const busiestWeekText = stats.busiestWeek
+    ? `${escapeHtml(stats.busiestWeek.label)} · ${formatNumber(stats.busiestWeek.count)}`
+    : "No data yet";
+  const busiestWeekdayText = stats.busiestWeekday
+    ? `${escapeHtml(stats.busiestWeekday.label)} · ${formatNumber(stats.busiestWeekday.count)}`
+    : "No data yet";
+
+  return `<section class="card fun-stats-card">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Fun Stats</p>
+      <h2>Birthday Trends</h2>
+    </div>
+    <p class="section-meta">Week and weekday views use the ${escapeHtml(String(stats.referenceYear))} birthday calendar.</p>
+  </div>
+  <div class="fun-stat-grid">
+    <article class="fun-stat">
+      <span>Most Popular Single Day</span>
+      <strong>${mostPopularDayText}</strong>
+    </article>
+    <article class="fun-stat">
+      <span>Busiest Month</span>
+      <strong>${busiestMonthText}</strong>
+    </article>
+    <article class="fun-stat">
+      <span>Busiest Week</span>
+      <strong>${busiestWeekText}</strong>
+    </article>
+    <article class="fun-stat">
+      <span>Top Weekday</span>
+      <strong>${busiestWeekdayText}</strong>
+    </article>
+  </div>
+  <div class="chart-toolbar">
+    <div class="chart-toggle-group" role="tablist" aria-label="Birthday chart view">
+      <button class="chart-toggle is-active" type="button" data-chart-view="month">By Month</button>
+      <button class="chart-toggle" type="button" data-chart-view="week">By Week</button>
+      <button class="chart-toggle" type="button" data-chart-view="weekday">By Weekday</button>
+    </div>
+    <p id="birthday-chart-caption" class="chart-caption">Birthdays grouped by month.</p>
+  </div>
+  <div class="chart-shell">
+    <div id="birthday-chart-scroll" class="chart-scroll">
+      <div id="birthday-chart" class="chart-bars" aria-live="polite"></div>
+    </div>
+  </div>
+</section>`;
+}
+
+function renderCardDavSection(data: LandingPageData): string {
+  if (!data.isAdmin || !data.cardDav) {
+    return "";
+  }
+
+  const cardDavServerUrl = escapeHtml(data.cardDav.serverUrl);
+  const cardDavAddressBookUrl = escapeHtml(data.cardDav.addressBookUrl);
+  const cardDavUsername = escapeHtml(data.cardDav.username);
+  const cardDavBookName = escapeHtml(data.cardDav.bookName);
+
+  return `<section class="card">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Private Contacts Sync</p>
+      <h2>CardDAV for iPhone Contacts</h2>
+    </div>
+    <p class="section-meta">${formatNumber(data.totalContacts)} contacts in ${cardDavBookName}</p>
+  </div>
+  <p class="body-copy">Use the same username and password that open this admin page. The address book is read-only and refreshes whenever the 7shifts sync runs.</p>
+
+  <div class="feed-list">
+    <article class="feed-row">
+      <div class="feed-head">
+        <div>
+          <p class="eyebrow">Server URL</p>
+          <h3>Use this for iPhone Contacts</h3>
+        </div>
+        <p class="feed-meta">CardDAV root</p>
+      </div>
+      <div class="url-row">
+        <input id="carddav-server-url" class="url-input" type="text" value="${cardDavServerUrl}" readonly />
+        <button class="copy-button" type="button" data-copy-target="carddav-server-url">Copy URL</button>
+      </div>
+    </article>
+
+    <article class="feed-row">
+      <div class="feed-head">
+        <div>
+          <p class="eyebrow">Username</p>
+          <h3>Same login as this admin page</h3>
+        </div>
+        <p class="feed-meta">Do not share</p>
+      </div>
+      <div class="url-row">
+        <input id="carddav-username" class="url-input" type="text" value="${cardDavUsername}" readonly />
+        <button class="copy-button" type="button" data-copy-target="carddav-username">Copy Username</button>
+      </div>
+    </article>
+
+    <article class="feed-row">
+      <div class="feed-head">
+        <div>
+          <p class="eyebrow">Advanced Clients</p>
+          <h3>Direct address book URL</h3>
+        </div>
+        <p class="feed-meta">${cardDavBookName}</p>
+      </div>
+      <div class="url-row">
+        <input id="carddav-book-url" class="url-input" type="text" value="${cardDavAddressBookUrl}" readonly />
+        <button class="copy-button" type="button" data-copy-target="carddav-book-url">Copy URL</button>
+      </div>
+    </article>
+  </div>
+
+  <div class="instructions">
+    <div>
+      <p class="eyebrow">iPhone Contacts</p>
+      <ol class="steps">
+        <li>Open <strong>Settings</strong> on iPhone.</li>
+        <li>Go to <strong>Apps</strong> → <strong>Contacts</strong> → <strong>Contacts Accounts</strong>.</li>
+        <li>Tap <strong>Add Account</strong> → <strong>Other</strong> → <strong>Add CardDAV Account</strong>.</li>
+        <li>Paste the <strong>Server URL</strong>, use the copied <strong>Username</strong>, enter the same password used for this admin page, and set the description to <strong>${cardDavBookName}</strong>.</li>
+      </ol>
+    </div>
+    <div>
+      <p class="eyebrow">What Syncs</p>
+      <ol class="steps">
+        <li>Active employees only.</li>
+        <li>First name, last name, email, phone, company, and birthday.</li>
+        <li>If 7shifts provides a profile image URL, the contact can include the photo.</li>
+      </ol>
+    </div>
+  </div>
+</section>`;
+}
+
+function renderSetupGuide(isAdmin: boolean): string {
+  return `<article class="card">
+  <p class="eyebrow">Setup Guide</p>
+  <h2>How to Add It</h2>
+  <div class="instructions">
+    <div>
+      <p class="eyebrow">Apple Calendar</p>
+      <ol class="steps">
+        <li>On iPhone, scan the QR code above or tap <strong>Open in Apple Calendar</strong>.</li>
+        <li>On Mac, open Calendar and add a subscribed calendar from URL.</li>
+        <li>If you prefer, copy the HTTPS URL and paste it into Apple Calendar manually.</li>
+      </ol>
+    </div>
+    <div>
+      <p class="eyebrow">Google Calendar</p>
+      <ol class="steps">
+        <li>Open Google Calendar in your browser.</li>
+        <li>Click the <strong>+</strong> next to <strong>Other calendars</strong>.</li>
+        <li>Choose <strong>From URL</strong> and paste the copied subscription URL.</li>
+      </ol>
+    </div>
+  </div>
+  <p class="note">${
+    isAdmin
+      ? "Manual refresh and birthday review tools are available only on this private admin page."
+      : "The admin dashboard lives at /admin and is protected separately from the public calendar feed."
+  }</p>
+</article>`;
+}
+
 export function renderLandingPage(data: LandingPageData): string {
   const firstCompany = data.companies[0];
   const subscriptionRows = data.companies.length
@@ -128,8 +349,15 @@ export function renderLandingPage(data: LandingPageData): string {
     : "";
 
   const escapedLastSynced = escapeHtml(formatLastSynced(data.lastSyncedAt));
-  const missingBirthdaySection = data.totalMissingBirthdays
-    ? `<div id="missing-birthdays-modal" class="modal-shell" hidden>
+  const birthdayStatsJson = toJsonForScript({
+    month: data.birthdayFunStats.byMonth,
+    week: data.birthdayFunStats.byWeek,
+    weekday: data.birthdayFunStats.byWeekday
+  });
+
+  const missingBirthdaySection =
+    data.isAdmin && data.totalMissingBirthdays
+      ? `<div id="missing-birthdays-modal" class="modal-shell" hidden>
   <div class="modal-backdrop" data-close-missing-modal></div>
   <section class="card missing-modal" role="dialog" aria-modal="true" aria-labelledby="missing-birthdays-title">
     <div class="section-head">
@@ -148,6 +376,21 @@ export function renderLandingPage(data: LandingPageData): string {
     </div>
   </section>
 </div>`
+      : "";
+
+  const adminControls = data.isAdmin
+    ? `<button id="manual-refresh-button" class="button button-primary" type="button">Manual Refresh</button>
+          ${
+            data.totalMissingBirthdays
+              ? `<button id="toggle-missing-button" class="button button-secondary" type="button">Show Missing Birthdays (${formatNumber(
+                  data.totalMissingBirthdays
+                )})</button>`
+              : ""
+          }`
+    : "";
+
+  const contactsStat = data.isAdmin
+    ? `<div class="stat"><strong>${formatNumber(data.totalContacts)}</strong><span>Contacts in CardDAV</span></div>`
     : "";
 
   return `<!doctype html>
@@ -427,6 +670,18 @@ export function renderLandingPage(data: LandingPageData): string {
       font-family: "SFMono-Regular", "Monaco", monospace;
     }
 
+    .copy-button {
+      min-height: 44px;
+      padding: 0.72rem 1rem;
+      border-radius: 14px;
+      border: 1px solid rgba(73, 197, 182, 0.28);
+      background: linear-gradient(135deg, rgba(73, 197, 182, 0.22), rgba(73, 197, 182, 0.1));
+      color: var(--text);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
     .feed-actions {
       display: flex;
       gap: 0.65rem;
@@ -471,6 +726,150 @@ export function renderLandingPage(data: LandingPageData): string {
       margin-top: 1rem;
       color: var(--muted);
       font-size: 0.92rem;
+    }
+
+    .fun-stats-card {
+      margin-top: 1rem;
+    }
+
+    .fun-stat-grid {
+      margin-top: 1rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 0.8rem;
+    }
+
+    .fun-stat {
+      padding: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .fun-stat span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .fun-stat strong {
+      display: block;
+      margin-top: 0.38rem;
+      font-size: 1rem;
+      line-height: 1.4;
+    }
+
+    .chart-toolbar {
+      margin-top: 1rem;
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .chart-toggle-group {
+      display: inline-flex;
+      gap: 0.45rem;
+      padding: 0.35rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .chart-toggle {
+      min-height: 38px;
+      padding: 0.55rem 0.85rem;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .chart-toggle.is-active {
+      background: linear-gradient(135deg, rgba(73, 197, 182, 0.22), rgba(73, 197, 182, 0.08));
+      color: var(--text);
+      border: 1px solid rgba(73, 197, 182, 0.24);
+    }
+
+    .chart-caption {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .chart-shell {
+      margin-top: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.03);
+      overflow: hidden;
+    }
+
+    .chart-scroll {
+      overflow-x: auto;
+      padding: 1rem;
+    }
+
+    .chart-bars {
+      display: flex;
+      align-items: end;
+      gap: 0.55rem;
+      min-height: 260px;
+      min-width: min-content;
+    }
+
+    .chart-bars.is-dense {
+      gap: 0.35rem;
+    }
+
+    .chart-column {
+      width: 52px;
+      min-width: 52px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.55rem;
+    }
+
+    .chart-bars.is-dense .chart-column {
+      width: 30px;
+      min-width: 30px;
+    }
+
+    .chart-bar-wrap {
+      height: 180px;
+      width: 100%;
+      display: flex;
+      align-items: end;
+    }
+
+    .chart-bar {
+      width: 100%;
+      min-height: 6px;
+      border-radius: 12px 12px 8px 8px;
+      background: linear-gradient(180deg, #ffc86f 0%, #f7a531 100%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    }
+
+    .chart-bars.is-dense .chart-bar {
+      border-radius: 8px 8px 4px 4px;
+    }
+
+    .chart-value {
+      font-size: 0.84rem;
+      color: var(--muted);
+    }
+
+    .chart-label {
+      font-size: 0.82rem;
+      color: var(--text);
+      white-space: nowrap;
     }
 
     .modal-shell {
@@ -637,17 +1036,14 @@ export function renderLandingPage(data: LandingPageData): string {
     <section class="hero">
       <div class="hero-copy">
         <h1>birthdaycalendar.me 🎈</h1>
-        <p class="sub">Subscribe the live birthday calendar in Apple Calendar or Google Calendar. Use the copy button for the exact feed URL, use the iPhone quick subscribe tools to open the Apple Calendar app directly, and review active 7shifters missing birthdays from the admin view.</p>
+        <p class="sub">${
+          data.isAdmin
+            ? "Use the private dashboard to refresh 7shifts data, review missing birthdays, see birthday trends, and configure the read-only CardDAV staff directory."
+            : "Subscribe the live birthday calendar in Apple Calendar or Google Calendar. Use the copy button for the exact feed URL, or use the iPhone quick subscribe tools to open the Apple Calendar app directly."
+        }</p>
 
         <div class="hero-controls">
-          <button id="manual-refresh-button" class="button button-primary" type="button">Manual Refresh</button>
-          ${
-            data.totalMissingBirthdays
-              ? `<button id="toggle-missing-button" class="button button-secondary" type="button">Show Missing Birthdays (${formatNumber(
-                  data.totalMissingBirthdays
-                )})</button>`
-              : ""
-          }
+          ${adminControls}
           <div id="refresh-status" class="status-pill">Last sync: ${escapedLastSynced}</div>
         </div>
 
@@ -656,6 +1052,7 @@ export function renderLandingPage(data: LandingPageData): string {
           <div class="stat"><strong>${formatNumber(data.totalActiveEmployees)}</strong><span>Active 7shifters</span></div>
           <div class="stat"><strong>${formatNumber(data.totalUsersFetched)}</strong><span>Users Fetched</span></div>
           <div class="stat"><strong>${escapeHtml(String(data.companies.length))}</strong><span>Calendar Feeds</span></div>
+          ${contactsStat}
         </section>
       </div>
 
@@ -666,37 +1063,17 @@ export function renderLandingPage(data: LandingPageData): string {
       <article class="card">
         <p class="eyebrow">Copyable Feed URL</p>
         <h2>Subscription URL</h2>
-        <p class="body-copy">Use this exact URL in Google Calendar. Apple Calendar can also accept this URL directly, but the Apple button and QR code above are faster on iPhone.</p>
+        <p class="body-copy">Use this exact URL in Google Calendar. Apple Calendar can also accept this URL directly, but the Apple button and QR code are faster on iPhone.</p>
         <div class="feed-list">
           ${subscriptionRows}
         </div>
       </article>
 
-      <article class="card">
-        <p class="eyebrow">Setup Guide</p>
-        <h2>How to Add It</h2>
-        <div class="instructions">
-          <div>
-            <p class="eyebrow">Apple Calendar</p>
-            <ol class="steps">
-              <li>On iPhone, scan the QR code above or tap <strong>Open in Apple Calendar</strong>.</li>
-              <li>On Mac, open Calendar and add a subscribed calendar from URL.</li>
-              <li>If you prefer, copy the HTTPS URL above and paste it into Apple Calendar.</li>
-            </ol>
-          </div>
-          <div>
-            <p class="eyebrow">Google Calendar</p>
-            <ol class="steps">
-              <li>Open Google Calendar in your browser.</li>
-              <li>Click the <strong>+</strong> next to <strong>Other calendars</strong>.</li>
-              <li>Choose <strong>From URL</strong> and paste the copied subscription URL.</li>
-            </ol>
-          </div>
-        </div>
-        <p class="note">Manual refresh pulls the latest birthday data from 7shifts immediately and reloads this page when it completes.</p>
-      </article>
+      ${renderSetupGuide(data.isAdmin)}
     </section>
 
+    ${renderCardDavSection(data)}
+    ${data.isAdmin ? renderFunStatsSection(data.birthdayFunStats) : ""}
   </main>
 
   ${missingBirthdaySection}
@@ -709,6 +1086,16 @@ export function renderLandingPage(data: LandingPageData): string {
     const closeMissingButton = document.getElementById("close-missing-button");
     const missingCheckboxes = Array.from(document.querySelectorAll("[data-check-key]"));
     const missingBirthdayStorageKey = "birthdaycalendar-missing-birthday-checks";
+    const birthdayChart = document.getElementById("birthday-chart");
+    const birthdayChartScroll = document.getElementById("birthday-chart-scroll");
+    const birthdayChartCaption = document.getElementById("birthday-chart-caption");
+    const chartToggleButtons = Array.from(document.querySelectorAll("[data-chart-view]"));
+    const birthdayStatsData = ${birthdayStatsJson};
+    const birthdayChartCaptions = {
+      month: "Birthdays grouped by month.",
+      week: "Birthdays grouped by week of year.",
+      weekday: "Birthdays grouped by weekday in ${escapeHtml(String(data.birthdayFunStats.referenceYear))}."
+    };
 
     async function copyText(targetId, button) {
       const input = document.getElementById(targetId);
@@ -734,6 +1121,64 @@ export function renderLandingPage(data: LandingPageData): string {
         copyText(button.getAttribute("data-copy-target"), button);
       });
     });
+
+    function renderBirthdayChart(view) {
+      if (!birthdayChart || !birthdayChartScroll || !birthdayStatsData[view]) {
+        return;
+      }
+
+      const buckets = birthdayStatsData[view];
+      const maxCount = Math.max(1, ...buckets.map((bucket) => bucket.count));
+      const isDense = buckets.length > 20;
+
+      birthdayChart.classList.toggle("is-dense", isDense);
+      birthdayChart.innerHTML = buckets
+        .map((bucket) => {
+          const height = bucket.count === 0 ? 6 : Math.max(12, Math.round((bucket.count / maxCount) * 180));
+          const title = bucket.label + ": " + bucket.count + " birthday" + (bucket.count === 1 ? "" : "s");
+
+          return (
+            '<div class="chart-column" title="' +
+            title +
+            '">' +
+            '<span class="chart-value">' +
+            bucket.count +
+            "</span>" +
+            '<div class="chart-bar-wrap">' +
+            '<div class="chart-bar" style="height: ' +
+            height +
+            'px;"></div>' +
+            "</div>" +
+            '<span class="chart-label">' +
+            bucket.shortLabel +
+            "</span>" +
+            "</div>"
+          );
+        })
+        .join("");
+
+      if (birthdayChartCaption) {
+        birthdayChartCaption.textContent = birthdayChartCaptions[view];
+      }
+
+      birthdayChartScroll.scrollLeft = 0;
+      chartToggleButtons.forEach((button) => {
+        button.classList.toggle("is-active", button.getAttribute("data-chart-view") === view);
+      });
+    }
+
+    chartToggleButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const view = button.getAttribute("data-chart-view");
+        if (view) {
+          renderBirthdayChart(view);
+        }
+      });
+    });
+
+    if (chartToggleButtons.length > 0) {
+      renderBirthdayChart("month");
+    }
 
     function loadMissingBirthdayChecks() {
       try {
@@ -807,25 +1252,27 @@ export function renderLandingPage(data: LandingPageData): string {
       });
     }
 
-    refreshButton.addEventListener("click", async () => {
-      refreshButton.disabled = true;
-      refreshStatus.textContent = "Refreshing from 7shifts...";
+    if (refreshButton && refreshStatus) {
+      refreshButton.addEventListener("click", async () => {
+        refreshButton.disabled = true;
+        refreshStatus.textContent = "Refreshing from 7shifts...";
 
-      try {
-        const response = await fetch("/refresh", { method: "POST" });
-        const payload = await response.json();
+        try {
+          const response = await fetch("${escapeHtml(data.refreshPath)}", { method: "POST" });
+          const payload = await response.json();
 
-        if (!response.ok) {
-          throw new Error(payload.message || "Refresh failed.");
+          if (!response.ok) {
+            throw new Error(payload.message || "Refresh failed.");
+          }
+
+          refreshStatus.textContent = "Refresh complete. Reloading...";
+          window.setTimeout(() => window.location.reload(), 800);
+        } catch (error) {
+          refreshStatus.textContent = error instanceof Error ? error.message : "Refresh failed.";
+          refreshButton.disabled = false;
         }
-
-        refreshStatus.textContent = "Refresh complete. Reloading...";
-        window.setTimeout(() => window.location.reload(), 800);
-      } catch (error) {
-        refreshStatus.textContent = error instanceof Error ? error.message : "Refresh failed.";
-        refreshButton.disabled = false;
-      }
-    });
+      });
+    }
   </script>
 </body>
 </html>`;

@@ -25,10 +25,14 @@ describe("performBirthdaySync", () => {
       port: 4000,
       baseUrl: "https://example.com",
       publicPathPrefix: "/calendar/7shifts/birthdays",
+      contactsPathPrefix: "/contacts/carddav",
+      contactsBookName: "7shifts Staff",
       timezone: "America/New_York",
       horizonYears: 10,
       sevenShiftsApiBaseUrl: "https://api.example.test/v2",
       sevenShiftsAccessToken: "token",
+      privateAuthUsername: "admin",
+      privateAuthPassword: "secret",
       cacheFilePath
     };
 
@@ -50,7 +54,15 @@ describe("performBirthdaySync", () => {
       if (url.includes("/company/1/users")) {
         return jsonResponse({
           data: [
-            { id: 10, first_name: "Alex", last_name: "Burgess", status: "active", birth_date: "1992-05-11" },
+            {
+              id: 10,
+              first_name: "Alex",
+              last_name: "Burgess",
+              status: "active",
+              birth_date: "1992-05-11",
+              email: "alex@example.com",
+              mobile_number: "+1 (555) 123-4567"
+            },
             { id: 13, first_name: "Zoe", last_name: "Adams", status: "active" },
             { id: 14, first_name: "Aaron", last_name: "Young", status: "active", birth_date: "" },
             { id: 11, first_name: "Manager", last_name: "Person", role: "manager", status: "active", birth_date: "1980-01-01" },
@@ -62,7 +74,24 @@ describe("performBirthdaySync", () => {
       if (url.includes("/company/2/users")) {
         return jsonResponse({
           data: [
-            { id: 20, first_name: "No", last_name: "Year", status: "active", date_of_birth: "1910-07-04" }
+            {
+              id: 20,
+              first_name: "No",
+              last_name: "Year",
+              status: "active",
+              date_of_birth: "1910-07-04",
+              email: "noyear@example.com",
+              phone: "555-222-3333"
+            },
+            {
+              id: 21,
+              first_name: "Alex",
+              last_name: "Burgess",
+              status: "active",
+              date_of_birth: "05-11",
+              email: "alex@example.com",
+              phone: "555-000-1111"
+            }
           ]
         });
       }
@@ -74,7 +103,8 @@ describe("performBirthdaySync", () => {
     const snapshot = store.getSnapshot();
 
     expect(result.companyCount).toBe(2);
-    expect(result.birthdayCount).toBe(2);
+    expect(result.birthdayCount).toBe(3);
+    expect(result.contactCount).toBe(4);
     expect(snapshot.lastSyncedAt).not.toBeNull();
     expect(Object.keys(snapshot.companies)).toEqual(["1", "2"]);
     expect(snapshot.companies["1"].people).toHaveLength(1);
@@ -100,9 +130,29 @@ describe("performBirthdaySync", () => {
     expect(snapshot.companies["2"].ics).toContain("No Year's Birthday");
     expect(snapshot.companies["2"].ics).not.toContain("116th Birthday");
     expect(snapshot.companies["2"].missingBirthdayPeople).toEqual([]);
+    expect(snapshot.contacts?.bookName).toBe("7shifts Staff");
+    expect(snapshot.contacts?.contacts).toHaveLength(4);
+    expect(snapshot.contacts?.contacts.map((contact) => contact.fullName)).toEqual([
+      "Aaron Young",
+      "Alex Burgess",
+      "No Year",
+      "Zoe Adams"
+    ]);
+    expect(snapshot.contacts?.contacts[1].companyName).toBe("Downtown / Uptown");
+    expect(snapshot.contacts?.contacts[1].birthday).toEqual({
+      year: 1992,
+      month: 5,
+      day: 11
+    });
+    expect(snapshot.contacts?.contacts[2].birthday).toEqual({
+      month: 7,
+      day: 4,
+      year: undefined
+    });
 
     const persisted = JSON.parse(await fs.readFile(cacheFilePath, "utf8"));
     expect(persisted.lastSyncedAt).toBe(snapshot.lastSyncedAt);
+    expect(persisted.contacts.contacts).toHaveLength(4);
     expect(fetchCalls.some((url) => url.includes("/companies"))).toBe(true);
   });
 });

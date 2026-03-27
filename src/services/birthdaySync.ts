@@ -1,7 +1,8 @@
 import { AppConfig } from "../config.js";
 import { logger } from "../logger.js";
 import { CacheStore } from "../store/cacheStore.js";
-import { BirthdayPerson, CacheSnapshot, CompanySnapshot, MissingBirthdayPerson } from "../types.js";
+import { BirthdayPerson, CacheSnapshot, CompanySnapshot, ContactBirthday, ContactRecord, MissingBirthdayPerson } from "../types.js";
+import { ContactCandidate, mergeContactCandidates } from "../utils/contactBook.js";
 import { buildBirthdayCalendarIcs } from "../utils/ics.js";
 import { isUnknownBirthYear, parseBirthDate } from "../utils/date.js";
 import { SevenShiftsClient, SevenShiftsUser } from "./sevenShiftsClient.js";
@@ -11,6 +12,7 @@ export interface SyncResult {
   companyCount: number;
   fetchedUserCount: number;
   birthdayCount: number;
+  contactCount: number;
   durationMs: number;
 }
 
@@ -125,6 +127,79 @@ function toMissingBirthdayPerson(companyId: string, user: SevenShiftsUser): Miss
   };
 }
 
+function toContactBirthday(user: SevenShiftsUser): ContactBirthday | undefined {
+  const parsed = parseBirthDate(user.birth_date ?? user.date_of_birth);
+  if (!parsed) {
+    return undefined;
+  }
+
+  return {
+    month: parsed.month,
+    day: parsed.day,
+    year: isUnknownBirthYear(parsed.birthYear) ? undefined : parsed.birthYear
+  };
+}
+
+function getUserEmail(user: SevenShiftsUser): string | undefined {
+  return (
+    getStringProperty(user, "email") ||
+    getStringProperty(user, "email_address") ||
+    getStringProperty(user, "username")
+  );
+}
+
+function getUserPhone(user: SevenShiftsUser): string | undefined {
+  return (
+    getStringProperty(user, "mobile_number") ||
+    getStringProperty(user, "phone") ||
+    getStringProperty(user, "phone_number") ||
+    getStringProperty(user, "mobile")
+  );
+}
+
+function getUserPhotoUrl(user: SevenShiftsUser): string | undefined {
+  const candidates = [
+    "photo_url",
+    "profile_image_url",
+    "avatar_url",
+    "image_url",
+    "photo",
+    "profile_image",
+    "avatar",
+    "image"
+  ];
+
+  for (const key of candidates) {
+    const value = getStringProperty(user, key);
+    if (value) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function toContactCandidate(companyId: string, companyName: string, user: SevenShiftsUser): ContactCandidate | null {
+  const id = user.id;
+  if (typeof id !== "string" && typeof id !== "number") {
+    return null;
+  }
+
+  const name = buildUserNameParts(user);
+
+  return {
+    companyId,
+    companyName,
+    userId: String(id),
+    firstName: name.firstName,
+    lastName: name.lastName,
+    fullName: name.fullName,
+    email: getUserEmail(user),
+    phone: getUserPhone(user),
+    birthday: toContactBirthday(user)
+  };
+}
+
 function dedupePeople(people: BirthdayPerson[]): BirthdayPerson[] {
   const seen = new Set<string>();
   const output: BirthdayPerson[] = [];
@@ -202,6 +277,40 @@ function buildCompanySnapshot(
   };
 }
 
+async function buildContactsSnapshot(
+  candidates: ContactCandidate[],
+  config: AppConfig,
+  syncedAt: string
+): Promise<{ bookName: string; contacts: ContactRecord[] }> {
+  const merged = mergeContactCandidates(candidates);
+
+  for (const warning of merged.warnings) {
+    logger.warn("contact_merge_warning", { ...warning });
+  }
+
+  const contacts: ContactRecord[] = [];
+
+  for (const contact of merged.contacts) {
+    contacts.push({
+      uid: contact.uid,
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      fullName: contact.fullName,
+      companyName: contact.companyName,
+      companyNames: contact.companyNames,
+      email: contact.email,
+      phone: contact.phone,
+      birthday: contact.birthday,
+      rev: syncedAt
+    });
+  }
+
+  return {
+    bookName: config.contactsBookName,
+    contacts
+  };
+}
+
 export async function performBirthdaySync(
   config: AppConfig,
   store: CacheStore,
@@ -220,6 +329,7 @@ export async function performBirthdaySync(
 
   const companies = await client.listCompanies();
   const snapshotCompanies: Record<string, CompanySnapshot> = {};
+  const contactCandidates: ContactCandidate[] = [];
 
   let fetchedUserCount = 0;
   let birthdayCount = 0;
@@ -228,6 +338,12 @@ export async function performBirthdaySync(
     const users = await client.listUsers(company.id);
     fetchedUserCount += users.length;
     const activeUsers = users.filter((user) => isActiveEmployee(user));
+
+    contactCandidates.push(
+      ...activeUsers
+        .map((user) => toContactCandidate(company.id, company.name, user))
+        .filter((contact): contact is ContactCandidate => contact !== null)
+    );
 
     const people = dedupePeople(
       activeUsers
@@ -263,10 +379,12 @@ export async function performBirthdaySync(
   }
 
   const syncedAt = new Date().toISOString();
+  const contacts = await buildContactsSnapshot(contactCandidates, config, syncedAt);
   const snapshot: CacheSnapshot = {
     lastSyncedAt: syncedAt,
     timezone: config.timezone,
     horizonYears: config.horizonYears,
+    contacts,
     companies: snapshotCompanies
   };
 
@@ -277,6 +395,7 @@ export async function performBirthdaySync(
     companyCount: companies.length,
     fetchedUserCount,
     birthdayCount,
+    contactCount: contacts.contacts.length,
     durationMs: Date.now() - startedAt
   };
 
@@ -285,6 +404,7 @@ export async function performBirthdaySync(
     companyCount: result.companyCount,
     fetchedUserCount: result.fetchedUserCount,
     birthdayCount: result.birthdayCount,
+    contactCount: result.contactCount,
     durationMs: result.durationMs
   });
   return result;

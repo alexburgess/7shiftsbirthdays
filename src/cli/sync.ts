@@ -18,6 +18,7 @@ async function run(): Promise<void> {
     companyCount: result.companyCount,
     fetchedUserCount: result.fetchedUserCount,
     birthdayCount: result.birthdayCount,
+    contactCount: result.contactCount,
     durationMs: result.durationMs
   });
 }

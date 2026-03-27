@@ -7,6 +7,31 @@ export interface BirthdayPerson {
   birthYear?: number;
 }
 
+export interface ContactBirthday {
+  month: number;
+  day: number;
+  year?: number;
+}
+
+export interface ContactRecord {
+  uid: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  companyName: string;
+  companyNames: string[];
+  email?: string;
+  phone?: string;
+  birthday?: ContactBirthday;
+  photoDataUri?: string;
+  rev: string;
+}
+
+export interface ContactsSnapshot {
+  bookName: string;
+  contacts: ContactRecord[];
+}
+
 export interface MissingBirthdayPerson {
   companyId: string;
   userId: string;
@@ -29,6 +54,7 @@ export interface CacheSnapshot {
   lastSyncedAt: string | null;
   timezone: string;
   horizonYears: number;
+  contacts?: ContactsSnapshot;
   companies: Record<string, CompanySnapshot>;
 }
 
