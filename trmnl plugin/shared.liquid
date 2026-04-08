@@ -1,0 +1,265 @@
+{% template main %}
+
+{% assign locale = trmnl.user.locale %}
+
+{% if locale == 'fr' %}
+  {% assign s_today = "AUJOURD'HUI!" %}
+  {% assign s_tomorrow = "DEMAIN!" %}
+  {% assign s_in_x_days_prefix = "Dans " %}
+  {% assign s_in_x_days_suffix = " jours" %}
+  {% assign s_turns_prefix = "Aura " %}
+  {% assign s_turns_suffix = " ans" %}
+  {% assign s_title = "Anniversaires à venir" %}
+  {% assign s_first_birthday = "Premier anniversaire " %}
+  {% assign s_is_today = "est AUJOURD'HUI!" %}
+  {% assign s_is_tomorrow = "est DEMAIN!" %}
+  {% assign s_in_prefix = "dans " %}
+  {% assign s_in_suffix = " jours" %}
+  {% assign s_empty = "Aucun anniversaire a venir" %}
+  {% assign dateFormat = "rest" %}
+{% elsif locale == 'nl' %}
+  {% assign s_today = "VANDAAG!!" %}
+  {% assign s_tomorrow = "MORGEN!!" %}
+  {% assign s_in_x_days_prefix = "In " %}
+  {% assign s_in_x_days_suffix = " dagen" %}
+  {% assign s_turns_prefix = "Wordt " %}
+  {% assign s_turns_suffix = " jaar" %}
+  {% assign s_title = "Volgende verjaardagen" %}
+  {% assign s_first_birthday = "Eerste verjaardag " %}
+  {% assign s_is_today = "is VANDAAG!" %}
+  {% assign s_is_tomorrow = "is MORGEN!" %}
+  {% assign s_in_prefix = "over " %}
+  {% assign s_in_suffix = " dagen" %}
+  {% assign s_empty = "Geen verjaardagen binnenkort" %}
+  {% assign dateFormat = "rest" %}
+{% elsif locale == 'zh-CN' %}
+  {% assign s_today = "今天！" %}
+  {% assign s_tomorrow = "明天！" %}
+  {% assign s_in_x_days_prefix = "" %}
+  {% assign s_in_x_days_suffix = " 天后" %}
+  {% assign s_turns_prefix = "满 " %}
+  {% assign s_turns_suffix = " 岁" %}
+  {% assign s_title = "最近生日" %}
+  {% assign s_first_birthday = "下一个生日" %}
+  {% assign s_is_today = "是今天！" %}
+  {% assign s_is_tomorrow = "是明天！" %}
+  {% assign s_in_prefix = "在 " %}
+  {% assign s_in_suffix = " 天后" %}
+  {% assign s_empty = "近期没有生日" %}
+  {% assign dateFormat = "us" %}
+{% elsif locale == 'ja' %}
+  {% assign s_today = "今日！" %}
+  {% assign s_tomorrow = "明日！" %}
+  {% assign s_in_x_days_prefix = "" %}
+  {% assign s_in_x_days_suffix = " 日後" %}
+  {% assign s_turns_prefix = "" %}
+  {% assign s_turns_suffix = " 歳になる" %}
+  {% assign s_title = "最近の誕生日" %}
+  {% assign s_first_birthday = "次の誕生日" %}
+  {% assign s_is_today = "は今日です！" %}
+  {% assign s_is_tomorrow = "は明日です！" %}
+  {% assign s_in_prefix = "まであと " %}
+  {% assign s_in_suffix = " 日" %}
+  {% assign s_empty = "近日中の誕生日はありません" %}
+  {% assign dateFormat = "us" %}
+{% elsif locale == 'de' or locale == 'de_AT' %}
+  {% assign s_today = "HEUTE!" %}
+  {% assign s_tomorrow = "MORGEN!" %}
+  {% assign s_in_x_days_prefix = "In " %}
+  {% assign s_in_x_days_suffix = " Tagen" %}
+  {% assign s_turns_prefix = "Wird " %}
+  {% assign s_turns_suffix = " Jahre alt" %}
+  {% assign s_title = "Nächste Geburtstage" %}
+  {% assign s_first_birthday = "Erster Geburtstag " %}
+  {% assign s_is_today = "ist HEUTE!" %}
+  {% assign s_is_tomorrow = "ist MORGEN!" %}
+  {% assign s_in_prefix = "in " %}
+  {% assign s_in_suffix = " Tagen" %}
+  {% assign s_empty = "Keine anstehenden Geburtstage" %}
+  {% assign dateFormat = "rest" %}
+{% else %}
+  {% assign s_today = "TODAY!" %}
+  {% assign s_tomorrow = "TOMORROW!" %}
+  {% assign s_in_x_days_prefix = "In " %}
+  {% assign s_in_x_days_suffix = " days" %}
+  {% assign s_turns_prefix = "Turns " %}
+  {% assign s_turns_suffix = " years old" %}
+  {% assign s_title = "Upcoming birthdays" %}
+  {% assign s_first_birthday = "First birthday " %}
+  {% assign s_is_today = "is TODAY!" %}
+  {% assign s_is_tomorrow = "is TOMORROW!" %}
+  {% assign s_in_prefix = "in " %}
+  {% assign s_in_suffix = " days" %}
+  {% assign s_empty = "No upcoming birthdays" %}
+  {% assign dateFormat = "us" %}
+{% endif %}
+
+{% assign birthday_entries = birthdays %}
+{% if birthday_entries == blank %}
+  {% assign birthday_entries = IDX_0.birthdays %}
+{% endif %}
+
+{% assign scope_data = scope %}
+{% if scope_data == blank %}
+  {% assign scope_data = IDX_0.scope %}
+{% endif %}
+
+{% if birthday_entries == blank or birthday_entries.size == 0 %}
+  <div class="layout layout--col flex--center h--full">
+    <div class="text--center">
+      <div class="value value--large">🍰</div>
+      <div class="value value--medium mt--2">{{ s_empty }}</div>
+    </div>
+  </div>
+
+  <div class="title_bar {{ titleBarClass }}">
+    <div>🍰</div>
+    <span class="title">{{ s_title }}</span>
+    <span class="instance {{ instanceClass }}">{{ scope_data.companyName | default: "All Companies" }}</span>
+  </div>
+{% else %}
+  {% assign daysUntilFirstBirthday = birthday_entries[0].daysUntil | plus: 0 %}
+
+  {% if trmnl.plugin_settings.custom_fields_values.skip_if_no_new_birthdays_within != 'always' %}
+    {% assign skip_threshold = trmnl.plugin_settings.custom_fields_values.skip_if_no_new_birthdays_within | plus: 0 %}
+    {% if daysUntilFirstBirthday > skip_threshold %}
+      <script>window.TRMNL_SKIP_SCREEN_GENERATION = true;</script>
+    {% endif %}
+  {% endif %}
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Emoji:wght@300..700&display=swap" rel="stylesheet">
+  <style>
+    .noto-emoji-trmnl {
+      font-family: "Noto Emoji", sans-serif;
+      font-optical-sizing: auto;
+      font-weight: 700;
+      font-style: normal;
+    }
+  </style>
+
+  <div class="layout layout--col birthdays">
+    {% assign birthdayColumns = birthdayColumns | default: birthdayLimit %}
+    {% assign longest_name_length = 0 %}
+    {% assign longest_second_line_length = 0 %}
+    {% for item in birthday_entries limit: birthdayLimit %}
+      {% if item.fullName.size > longest_name_length %}
+        {% assign longest_name_length = item.fullName.size %}
+      {% endif %}
+
+      {% assign sizing_name_parts = item.fullName | split: " " %}
+      {% assign sizing_first_name = sizing_name_parts[0] %}
+      {% assign sizing_remaining_name = item.fullName | remove_first: sizing_first_name | strip %}
+      {% if sizing_remaining_name.size > longest_second_line_length %}
+        {% assign longest_second_line_length = sizing_remaining_name.size %}
+      {% endif %}
+    {% endfor %}
+
+    {% assign sharedNameSize = nameSize %}
+    {% assign sharedNameStyle = "display:block; white-space:normal; overflow-wrap:anywhere; word-break:break-word; line-height:1.05; letter-spacing:0px;" %}
+    {% if birthdayLimit <= 2 %}
+      {% if longest_second_line_length > 24 or longest_name_length > 30 %}
+        {% assign sharedNameStyle = sharedNameStyle | append: "font-size:15px;" %}
+      {% elsif longest_second_line_length > 18 or longest_name_length > 24 %}
+        {% assign sharedNameStyle = sharedNameStyle | append: "font-size:17px;" %}
+      {% elsif longest_second_line_length > 14 or longest_name_length > 18 %}
+        {% assign sharedNameStyle = sharedNameStyle | append: "font-size:19px;" %}
+      {% else %}
+        {% assign sharedNameStyle = sharedNameStyle | append: "font-size:21px;" %}
+      {% endif %}
+    {% else %}
+      {% if longest_second_line_length > 24 or longest_name_length > 30 %}
+        {% assign sharedNameStyle = sharedNameStyle | append: "font-size:13px;" %}
+      {% elsif longest_second_line_length > 18 or longest_name_length > 24 %}
+        {% assign sharedNameStyle = sharedNameStyle | append: "font-size:14px;" %}
+      {% elsif longest_second_line_length > 14 or longest_name_length > 18 %}
+        {% assign sharedNameStyle = sharedNameStyle | append: "font-size:15px;" %}
+      {% else %}
+        {% assign sharedNameStyle = sharedNameStyle | append: "font-size:16px;" %}
+      {% endif %}
+    {% endif %}
+
+    <div class="grid grid--cols-{{ birthdayColumns }} gap h--full">
+      {% for item in birthday_entries limit: birthdayLimit %}
+        {% assign days_until = item.daysUntil | plus: 0 %}
+
+        {% if days_until == 0 %}
+          {% assign background = "40" %}
+        {% elsif days_until == 1 %}
+          {% assign background = "50" %}
+        {% else %}
+          {% assign background = "70" %}
+        {% endif %}
+
+        {% assign name_parts = item.fullName | split: " " %}
+        {% assign first_name = name_parts[0] %}
+        {% assign remaining_name = item.fullName | remove_first: first_name | strip %}
+
+        <div class="bg--gray-{{ background }} p--3 rounded">
+          <div class="flex flex--col h--full">
+            <div class="flex flex--col text--center">
+              {% if showEmoji %}
+                <span class="text-stroke text-stroke--xlarge {{ emojiSize }} {{ emojiPadding }}">
+                  <div class="noto-emoji-trmnl">{{ item.emoji }}</div>
+                </span>
+              {% endif %}
+              {% if showDate %}
+                <span class="label {{ birthdaySize }} text-stroke text-stroke--large text--center">
+                  {% if dateFormat == "us" %}
+                    {{ item.month }}/{{ item.day }}
+                  {% else %}
+                    {{ item.day }}-{{ item.month }}
+                  {% endif %}
+                </span>
+              {% endif %}
+            </div>
+            <div class="flex flex--col flex--center stretch text--center">
+              <span class="value {{ sharedNameSize }} text-stroke text-stroke--large text--center" style="{{ sharedNameStyle }}">
+                <span style="display:block;">{{ first_name }}</span>
+                {% if remaining_name != blank %}
+                  <span style="display:block;">{{ remaining_name }}</span>
+                {% endif %}
+              </span>
+              {% if showAge %}
+                {% if item.age != blank %}
+                  <span class="label {{ ageSize }} text-stroke text-stroke--large">{{ s_turns_prefix }}{{ item.age }}{{ s_turns_suffix }}</span>
+                {% else %}
+                  <span class="label {{ ageSize }} text-stroke text-stroke--large">&nbsp;</span>
+                {% endif %}
+              {% endif %}
+            </div>
+            {% if showDaysUntil %}
+              <div class="flex flex--center flex--col gap--xsmall">
+                {% if days_until == 0 %}
+                  <span class="value {{ showDaysUntilSize }} text-stroke text-stroke--large w--full text--center">{{ s_today }}</span>
+                {% elsif days_until == 1 %}
+                  <span class="value {{ showDaysUntilSize }} text-stroke text-stroke--large w--full text--center">{{ s_tomorrow }}</span>
+                {% else %}
+                  <span class="value {{ showDaysUntilSize }} text-stroke text-stroke--large w--full text--center">{{ s_in_x_days_prefix }}{{ days_until }}{{ s_in_x_days_suffix }}</span>
+                {% endif %}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="title_bar {{ titleBarClass }}">
+    <div class="noto-emoji-trmnl">🍰</div>
+    <span class="title">{{ s_title }}</span>
+    <span class="instance {{ instanceClass }}">
+      {{ s_first_birthday }}
+      {% if daysUntilFirstBirthday == 0 %}
+        {{ s_is_today }}
+      {% elsif daysUntilFirstBirthday == 1 %}
+        {{ s_is_tomorrow }}
+      {% else %}
+        {{ s_in_prefix }}{{ daysUntilFirstBirthday }}{{ s_in_suffix }}
+      {% endif %}
+    </span>
+  </div>
+{% endif %}
+
+{% endtemplate %}

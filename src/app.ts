@@ -15,7 +15,8 @@ import {
   parseCardDavReport
 } from "./utils/carddav.js";
 import { renderLandingPage } from "./utils/landingPage.js";
-import { buildContactVCard, getVCardEtag } from "./utils/vcard.js";
+import { buildUpcomingBirthdays } from "./utils/upcomingBirthdays.js";
+import { BuildContactVCardOptions, buildContactVCard, getVCardEtag } from "./utils/vcard.js";
 
 interface AppDependencies {
   config: AppConfig;
@@ -50,6 +51,28 @@ function buildIcsUrl(baseUrl: string, pathPrefix: string, companyId: string): st
 function buildAbsoluteUrl(baseUrl: string, path: string): string {
   const base = trimTrailingSlash(baseUrl);
   return `${base}${path}`;
+}
+
+function getSingleQueryValue(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : undefined;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (typeof item !== "string") {
+        continue;
+      }
+
+      const trimmed = item.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+  }
+
+  return undefined;
 }
 
 function toWebcalUrl(url: string): string {
@@ -198,6 +221,21 @@ function matchContactByPath(requestPath: string, addressBookPath: string, contac
   return contacts.find((contact) => contact.uid === uid);
 }
 
+function getCardDavVCardOptions(userAgent: string | undefined): BuildContactVCardOptions {
+  const agent = userAgent ?? "";
+
+  if (/AddressBookCore|macOS\//i.test(agent)) {
+    return {
+      version: "3.0",
+      unknownBirthYearFallback: 1604
+    };
+  }
+
+  return {
+    version: "4.0"
+  };
+}
+
 export function createApp({ config, store }: AppDependencies) {
   const app = express();
   const basicAuthCredentials = getBasicAuthCredentials(config);
@@ -309,6 +347,130 @@ export function createApp({ config, store }: AppDependencies) {
     };
   }
 
+  async function handleCardDavRequest(req: Request, res: Response, requestPath: string): Promise<void> {
+    await store.maybeReloadFromDisk();
+    const snapshot = store.getSnapshot();
+    const contacts = snapshot.contacts?.contacts ?? [];
+    const bookName = snapshot.contacts?.bookName ?? config.contactsBookName;
+    const vcardOptions = getCardDavVCardOptions(req.header("user-agent"));
+
+    setDavHeaders(res);
+
+    if (cardDavWriteMethods.has(req.method.toUpperCase())) {
+      respondMethodNotAllowed(res, cardDavAllowHeader);
+      return;
+    }
+
+    if (req.method === "OPTIONS") {
+      res.setHeader("Allow", cardDavAllowHeader);
+      res.status(204).end();
+      return;
+    }
+
+    if (req.method === "PROPFIND") {
+      const document = buildPropfindDocument({
+        paths: cardDavPaths,
+        requestPath,
+        depth: req.header("depth") ?? "0",
+        baseUrl: config.baseUrl,
+        bookName,
+        username: basicAuthCredentials?.username ?? "admin",
+        lastSyncedAt: snapshot.lastSyncedAt,
+        contacts,
+        vcardOptions
+      });
+
+      if (!document) {
+        res.status(404).send("Not found.");
+        return;
+      }
+
+      res.status(207).setHeader("Content-Type", "application/xml; charset=utf-8");
+      res.send(document);
+      return;
+    }
+
+    if (req.method === "REPORT") {
+      if (!isCollectionRequestPath(requestPath, cardDavPaths.addressBookPath)) {
+        res.status(404).send("Not found.");
+        return;
+      }
+
+      const body = typeof req.body === "string" ? req.body : "";
+      const report = parseCardDavReport(body);
+      if (!report.type) {
+        res.status(400).send("Unsupported REPORT request.");
+        return;
+      }
+
+      const document = buildReportDocument({
+        paths: cardDavPaths,
+        reportType: report.type,
+        requestedHrefs: report.hrefs,
+        contacts,
+        baseUrl: config.baseUrl,
+        lastSyncedAt: snapshot.lastSyncedAt,
+        vcardOptions
+      });
+
+      res.status(207).setHeader("Content-Type", "application/xml; charset=utf-8");
+      res.send(document);
+      return;
+    }
+
+    if (req.method === "GET" || req.method === "HEAD") {
+      if (
+        isCollectionRequestPath(requestPath, cardDavPaths.rootPath) ||
+        isCollectionRequestPath(requestPath, cardDavPaths.principalPath) ||
+        isCollectionRequestPath(requestPath, cardDavPaths.addressBookHomePath) ||
+        isCollectionRequestPath(requestPath, cardDavPaths.addressBookPath)
+      ) {
+        const body = buildCardDavGetText(bookName, contacts.length);
+        res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        if (req.method === "HEAD") {
+          res.status(200).end();
+          return;
+        }
+
+        res.status(200).send(body);
+        return;
+      }
+
+      const contact = matchContactByPath(requestPath, cardDavPaths.addressBookPath, contacts);
+      if (!contact) {
+        res.status(404).send("Not found.");
+        return;
+      }
+
+      const vcard = buildContactVCard(contact, vcardOptions);
+      res.setHeader("Content-Type", "text/vcard; charset=utf-8");
+      res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(contact.uid)}.vcf"`);
+      res.setHeader("ETag", getVCardEtag(vcard));
+      res.setHeader("Cache-Control", "private, max-age=300");
+
+      if (req.method === "HEAD") {
+        res.status(200).end();
+        return;
+      }
+
+      res.status(200).send(vcard);
+      return;
+    }
+
+    respondMethodNotAllowed(res, cardDavAllowHeader);
+  }
+
+  app.all("/", (req, res, next) => {
+    if (req.method !== "OPTIONS" && req.method !== "PROPFIND") {
+      next();
+      return;
+    }
+
+    requirePrivateAuth(req, res, () => {
+      void handleCardDavRequest(req, res, cardDavPaths.rootPath).catch(next);
+    });
+  });
+
   app.get(
     "/",
     asyncRoute(async (_req, res) => {
@@ -370,6 +532,45 @@ export function createApp({ config, store }: AppDependencies) {
   });
 
   app.get(
+    "/trmnl/birthdays.json",
+    asyncRoute(async (req, res) => {
+      await store.maybeReloadFromDisk();
+      const snapshot = store.getSnapshot();
+      const requestedCompanyId =
+        getSingleQueryValue(req.query.companyId) ?? getSingleQueryValue(req.query.company_id);
+
+      const companies = Object.values(snapshot.companies);
+      const selectedCompanies = requestedCompanyId
+        ? companies.filter((company) => company.companyId === requestedCompanyId)
+        : companies;
+
+      if (requestedCompanyId && selectedCompanies.length === 0) {
+        res.status(404).json({
+          error: "not_found",
+          message: `No birthday feed found for company ${requestedCompanyId}.`
+        });
+        return;
+      }
+
+      const birthdays = buildUpcomingBirthdays(selectedCompanies, snapshot.timezone || config.timezone);
+
+      res.status(200).json({
+        lastSyncedAt: snapshot.lastSyncedAt,
+        timezone: snapshot.timezone || config.timezone,
+        scope: {
+          companyId: selectedCompanies.length === 1 ? selectedCompanies[0]?.companyId ?? null : null,
+          companyName:
+            selectedCompanies.length === 1 ? selectedCompanies[0]?.companyName ?? "All Companies" : "All Companies",
+          companyCount: selectedCompanies.length
+        },
+        totalBirthdays: birthdays.length,
+        daysUntilFirstBirthday: birthdays[0]?.daysUntil ?? null,
+        birthdays
+      });
+    })
+  );
+
+  app.get(
     config.publicPathPrefix,
     asyncRoute(async (_req, res) => {
       await store.maybeReloadFromDisk();
@@ -423,114 +624,8 @@ export function createApp({ config, store }: AppDependencies) {
   app.all(
     cardDavRoutePaths,
     asyncRoute(async (req, res) => {
-      await store.maybeReloadFromDisk();
-      const snapshot = store.getSnapshot();
-      const contacts = snapshot.contacts?.contacts ?? [];
-      const bookName = snapshot.contacts?.bookName ?? config.contactsBookName;
       const requestPath = normalizeCardDavRequestPath(req.path, cardDavPaths.addressBookPath);
-
-      setDavHeaders(res);
-
-      if (cardDavWriteMethods.has(req.method.toUpperCase())) {
-        respondMethodNotAllowed(res, cardDavAllowHeader);
-        return;
-      }
-
-      if (req.method === "OPTIONS") {
-        res.setHeader("Allow", cardDavAllowHeader);
-        res.status(204).end();
-        return;
-      }
-
-      if (req.method === "PROPFIND") {
-        const document = buildPropfindDocument({
-          paths: cardDavPaths,
-          requestPath,
-          depth: req.header("depth") ?? "0",
-          baseUrl: config.baseUrl,
-          bookName,
-          username: basicAuthCredentials?.username ?? "admin",
-          lastSyncedAt: snapshot.lastSyncedAt,
-          contacts
-        });
-
-        if (!document) {
-          res.status(404).send("Not found.");
-          return;
-        }
-
-        res.status(207).setHeader("Content-Type", "application/xml; charset=utf-8");
-        res.send(document);
-        return;
-      }
-
-      if (req.method === "REPORT") {
-        if (!isCollectionRequestPath(requestPath, cardDavPaths.addressBookPath)) {
-          res.status(404).send("Not found.");
-          return;
-        }
-
-        const body = typeof req.body === "string" ? req.body : "";
-        const report = parseCardDavReport(body);
-        if (!report.type) {
-          res.status(400).send("Unsupported REPORT request.");
-          return;
-        }
-
-        const document = buildReportDocument({
-          paths: cardDavPaths,
-          reportType: report.type,
-          requestedHrefs: report.hrefs,
-          contacts,
-          baseUrl: config.baseUrl,
-          lastSyncedAt: snapshot.lastSyncedAt
-        });
-
-        res.status(207).setHeader("Content-Type", "application/xml; charset=utf-8");
-        res.send(document);
-        return;
-      }
-
-      if (req.method === "GET" || req.method === "HEAD") {
-        if (
-          isCollectionRequestPath(requestPath, cardDavPaths.rootPath) ||
-          isCollectionRequestPath(requestPath, cardDavPaths.principalPath) ||
-          isCollectionRequestPath(requestPath, cardDavPaths.addressBookHomePath) ||
-          isCollectionRequestPath(requestPath, cardDavPaths.addressBookPath)
-        ) {
-          const body = buildCardDavGetText(bookName, contacts.length);
-          res.setHeader("Content-Type", "text/plain; charset=utf-8");
-          if (req.method === "HEAD") {
-            res.status(200).end();
-            return;
-          }
-
-          res.status(200).send(body);
-          return;
-        }
-
-        const contact = matchContactByPath(requestPath, cardDavPaths.addressBookPath, contacts);
-        if (!contact) {
-          res.status(404).send("Not found.");
-          return;
-        }
-
-        const vcard = buildContactVCard(contact);
-        res.setHeader("Content-Type", "text/vcard; charset=utf-8");
-        res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(contact.uid)}.vcf"`);
-        res.setHeader("ETag", getVCardEtag(vcard));
-        res.setHeader("Cache-Control", "private, max-age=300");
-
-        if (req.method === "HEAD") {
-          res.status(200).end();
-          return;
-        }
-
-        res.status(200).send(vcard);
-        return;
-      }
-
-      respondMethodNotAllowed(res, cardDavAllowHeader);
+      await handleCardDavRequest(req, res, requestPath);
     })
   );
 

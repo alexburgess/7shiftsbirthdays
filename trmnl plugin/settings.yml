@@ -1,0 +1,38 @@
+---
+strategy: polling
+no_screen_padding: 'no'
+dark_mode: 'no'
+static_data: ''
+polling_verb: GET
+framework_version: 2.3.7
+serverless_language: ''
+polling_url: "{{ feed_url }}"
+polling_headers: ''
+polling_body: ''
+id: 281324
+custom_fields:
+- keyname: doesnt_matter
+  name: About This Plugin
+  category: personal,calendar
+  field_type: author_bio
+  description: Never forget a birthday again. This version syncs directly from your 7shifts birthday calendar service instead of storing birthdays manually in TRMNL.<br><br>Use <code>https://your-domain.example/trmnl/birthdays.json</code> for all companies, or <code>https://your-domain.example/trmnl/birthdays.json?companyId=123</code> for one company.<br><br>Supports English, French, German, Dutch, Japanese and Simplified Chinese.<br><br>Recipe created by Jasper, @jasper on TRMNL Discord. Plugin Icon by sentya irma from <a href="https://thenounproject.com/browse/icons/term/birthday-calendar/" target="_blank" title="birthday calendar Icons">Noun Project</a> (CC BY 3.0).
+  email_address: trmnl@jaspervandermeij.com
+- keyname: feed_url
+  field_type: string
+  name: Feed URL
+  description: Paste the TRMNL JSON endpoint from your birthday calendar service.
+  placeholder: https://birthdaycalendar.me/trmnl/birthdays.json
+  help_text: Use the full JSON URL. Add ?companyId=123 if you only want one company's birthdays.
+- keyname: skip_if_no_new_birthdays_within
+  field_type: select
+  name: Only show when birthdays are within the next..
+  description: The plugin won't show if there are no birthdays upcoming. Makes for a cleaner playlist.
+  options:
+  - 2 weeks: 14
+  - 3 weeks: 21
+  - month: 31
+  - 2 months: 62
+  - Always show this plugin: always
+  default: always
+name: Birthday Calendar
+refresh_interval: 15

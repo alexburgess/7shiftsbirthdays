@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 
 import request from "supertest";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createApp } from "../../src/app.js";
 import { AppConfig } from "../../src/config.js";
@@ -12,7 +12,14 @@ import { CacheSnapshot } from "../../src/types.js";
 describe("HTTP routes", () => {
   const routeTest = typeof Bun !== "undefined" ? it.skip : it;
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   routeTest("serves health, index, and company ICS feed", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-08T12:00:00.000Z"));
+
     const config: AppConfig = {
       port: 4000,
       baseUrl: "https://calendar.example.com",
@@ -122,6 +129,30 @@ describe("HTTP routes", () => {
       "https://calendar.example.com/calendar/7shifts/birthdays/123.ics"
     );
 
+    const trmnlFeed = await request(app).get("/trmnl/birthdays.json");
+    expect(trmnlFeed.status).toBe(200);
+    expect(trmnlFeed.body.scope.companyName).toBe("Downtown");
+    expect(trmnlFeed.body.totalBirthdays).toBe(1);
+    expect(trmnlFeed.body.birthdays).toHaveLength(1);
+    expect(trmnlFeed.body.birthdays[0]).toMatchObject({
+      companyId: "123",
+      companyName: "Downtown",
+      userId: "10",
+      fullName: "Alex Burgess",
+      month: 5,
+      day: 11,
+      birthYear: 1992,
+      age: 34
+    });
+
+    const scopedTrmnlFeed = await request(app).get("/trmnl/birthdays.json?companyId=123");
+    expect(scopedTrmnlFeed.status).toBe(200);
+    expect(scopedTrmnlFeed.body.scope.companyId).toBe("123");
+    expect(scopedTrmnlFeed.body.birthdays).toHaveLength(1);
+
+    const missingTrmnlFeed = await request(app).get("/trmnl/birthdays.json?companyId=999");
+    expect(missingTrmnlFeed.status).toBe(404);
+
     const calendar = await request(app).get("/calendar/7shifts/birthdays/123.ics");
     expect(calendar.status).toBe(200);
     expect(calendar.headers["content-type"]).toContain("text/calendar");
@@ -164,6 +195,20 @@ describe("HTTP routes", () => {
       const propfindBody = await propfindResponse.text();
       expect(propfindBody).toContain("/contacts/carddav/addressbooks/employees/");
       expect(propfindBody).toContain("contact-1@7shifts-birthday-calendar.vcf");
+
+      const rootPropfindResponse = await fetch(`http://127.0.0.1:${address.port}/`, {
+        method: "PROPFIND",
+        headers: {
+          Authorization: `Basic ${Buffer.from("admin:secret").toString("base64")}`,
+          Depth: "0"
+        }
+      });
+
+      expect(rootPropfindResponse.status).toBe(207);
+      expect(rootPropfindResponse.headers.get("content-type")).toContain("application/xml");
+      const rootPropfindBody = await rootPropfindResponse.text();
+      expect(rootPropfindBody).toContain("/contacts/carddav/principals/admin/");
+      expect(rootPropfindBody).toContain("/contacts/carddav/addressbooks/");
     } finally {
       await new Promise<void>((resolve, reject) => {
         propfindServer.close((error) => {

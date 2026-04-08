@@ -9,6 +9,7 @@ Production-ready Node.js/TypeScript service that publishes public subscribable I
 - `GET /admin` (private dashboard protected by Basic Auth)
 - `GET /calendar/7shifts/birthdays`
 - `GET /calendar/7shifts/birthdays/:companyId.ics`
+- `GET /trmnl/birthdays.json`
 - `GET /.well-known/carddav`
 - `OPTIONS|PROPFIND|REPORT /contacts/carddav/...`
 - `GET|HEAD /contacts/carddav/addressbooks/employees/:uid.vcf`
@@ -80,6 +81,16 @@ npm run sync
 4. Use the copied server URL, the admin username, and the same admin password.
 
 The address book is read-only by design. Write methods return `405`.
+
+## TRMNL setup
+
+The repo includes a TRMNL plugin in [`trmnl plugin`](/Users/alexburgess/Developer/7Shifts Birthday Calendar/trmnl plugin) that now reads live birthday data from this service.
+
+- Use `https://your-domain.example/trmnl/birthdays.json` to show upcoming birthdays across all companies.
+- Use `https://your-domain.example/trmnl/birthdays.json?companyId=123` to scope the plugin to one company.
+- Paste that URL into the plugin's `Feed URL` setting in TRMNL.
+
+The TRMNL endpoint is backed by the same cached birthday snapshot as the ICS and CardDAV outputs, so it stays in sync with your existing refresh process.
 
 ## Deployment on Ubuntu 24.04 (Linode, no Docker)
 

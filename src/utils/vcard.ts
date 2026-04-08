@@ -2,6 +2,13 @@ import { createHash } from "node:crypto";
 
 import { ContactBirthday, ContactRecord } from "../types.js";
 
+export type VCardVersion = "3.0" | "4.0";
+
+export interface BuildContactVCardOptions {
+  version: VCardVersion;
+  unknownBirthYearFallback?: number;
+}
+
 function escapeVCardText(value: string): string {
   return value
     .replace(/\\/g, "\\\\")
@@ -24,7 +31,7 @@ function foldLine(line: string): string {
   return parts.join("\r\n");
 }
 
-function formatBirthday(birthday: ContactBirthday | undefined): string | undefined {
+function formatBirthday(birthday: ContactBirthday | undefined, options: BuildContactVCardOptions): string | undefined {
   if (!birthday) {
     return undefined;
   }
@@ -32,14 +39,23 @@ function formatBirthday(birthday: ContactBirthday | undefined): string | undefin
   const month = String(birthday.month).padStart(2, "0");
   const day = String(birthday.day).padStart(2, "0");
 
-  if (birthday.year) {
-    return `${birthday.year}${month}${day}`;
+  if (options.version === "4.0") {
+    if (birthday.year) {
+      return `${birthday.year}${month}${day}`;
+    }
+
+    return `--${month}${day}`;
   }
 
-  return `--${month}${day}`;
+  const year = birthday.year ?? options.unknownBirthYearFallback;
+  if (!year) {
+    return undefined;
+  }
+
+  return `${year}-${month}-${day}`;
 }
 
-function formatRevTimestamp(value: string): string {
+function formatRevTimestamp(value: string, version: VCardVersion): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
     return value;
@@ -52,18 +68,26 @@ function formatRevTimestamp(value: string): string {
   const minutes = String(parsed.getUTCMinutes()).padStart(2, "0");
   const seconds = String(parsed.getUTCSeconds()).padStart(2, "0");
 
-  return `${year}${month}${day}T${hours}${minutes}${seconds}Z`;
+  if (version === "4.0") {
+    return `${year}${month}${day}T${hours}${minutes}${seconds}Z`;
+  }
+
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}Z`;
 }
 
 function formatTelephoneText(value: string): string {
   return value.trim();
 }
 
-export function buildContactVCard(contact: ContactRecord): string {
+export function buildContactVCard(contact: ContactRecord, options: BuildContactVCardOptions): string {
   const lines = [
     "BEGIN:VCARD",
-    "VERSION:4.0",
-    foldLine(`UID;VALUE=text:${escapeVCardText(contact.uid)}`),
+    `VERSION:${options.version}`,
+    foldLine(
+      options.version === "4.0"
+        ? `UID;VALUE=text:${escapeVCardText(contact.uid)}`
+        : `UID:${escapeVCardText(contact.uid)}`
+    ),
     foldLine(`FN:${escapeVCardText(contact.fullName)}`),
     foldLine(`N:${escapeVCardText(contact.lastName)};${escapeVCardText(contact.firstName)};;;`),
     foldLine(`ORG:${escapeVCardText(contact.companyName)}`)
@@ -77,12 +101,12 @@ export function buildContactVCard(contact: ContactRecord): string {
     lines.push(foldLine(`TEL:${escapeVCardText(formatTelephoneText(contact.phone))}`));
   }
 
-  const birthday = formatBirthday(contact.birthday);
+  const birthday = formatBirthday(contact.birthday, options);
   if (birthday) {
     lines.push(`BDAY:${birthday}`);
   }
 
-  lines.push(`REV:${formatRevTimestamp(contact.rev)}`);
+  lines.push(`REV:${formatRevTimestamp(contact.rev, options.version)}`);
   lines.push("END:VCARD");
 
   return `${lines.join("\r\n")}\r\n`;

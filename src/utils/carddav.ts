@@ -1,5 +1,5 @@
 import { ContactRecord } from "../types.js";
-import { buildContactVCard, getVCardEtag } from "./vcard.js";
+import { BuildContactVCardOptions, buildContactVCard, getVCardEtag } from "./vcard.js";
 
 const DAV_NAMESPACE = "DAV:";
 const CARDDAV_NAMESPACE = "urn:ietf:params:xml:ns:carddav";
@@ -113,10 +113,9 @@ function buildSupportedPrivilegeSet(): string {
 </D:supported-privilege-set>`;
 }
 
-function buildSupportedAddressData(): string {
+function buildSupportedAddressData(vcardVersion: BuildContactVCardOptions["version"]): string {
   return `<C:supported-address-data>
-  <C:address-data-type content-type="text/vcard" version="3.0"/>
-  <C:address-data-type content-type="text/vcard" version="4.0"/>
+  <C:address-data-type content-type="text/vcard" version="${vcardVersion}"/>
 </C:supported-address-data>`;
 }
 
@@ -172,7 +171,8 @@ function buildAddressBookResponse(
   paths: CardDavPaths,
   bookName: string,
   baseUrl: string,
-  lastSyncedAt: string | null
+  lastSyncedAt: string | null,
+  vcardOptions: BuildContactVCardOptions
 ): PropfindResponse {
   const syncToken = buildAddressBookSyncToken(baseUrl, paths.addressBookPath, lastSyncedAt);
 
@@ -185,15 +185,15 @@ function buildAddressBookResponse(
       `<D:sync-token>${escapeXml(syncToken)}</D:sync-token>`,
       buildCurrentUserPrivilegeSet(),
       buildSupportedPrivilegeSet(),
-      buildSupportedAddressData(),
+      buildSupportedAddressData(vcardOptions.version),
       buildSupportedReportSet()
     ]
   };
 }
 
-function buildContactResponse(paths: CardDavPaths, contact: ContactRecord): PropfindResponse {
+function buildContactResponse(paths: CardDavPaths, contact: ContactRecord, vcardOptions: BuildContactVCardOptions): PropfindResponse {
   const href = buildContactHref(paths, contact);
-  const vcard = buildContactVCard(contact);
+  const vcard = buildContactVCard(contact, vcardOptions);
 
   return {
     href,
@@ -218,8 +218,9 @@ export function buildPropfindDocument(params: {
   username: string;
   lastSyncedAt: string | null;
   contacts: ContactRecord[];
+  vcardOptions: BuildContactVCardOptions;
 }): string | null {
-  const { paths, requestPath, depth, bookName, username, lastSyncedAt, contacts } = params;
+  const { paths, requestPath, depth, bookName, username, lastSyncedAt, contacts, vcardOptions } = params;
   const syncToken = buildAddressBookSyncToken(params.baseUrl, paths.addressBookPath, lastSyncedAt);
   const depthOne = depth === "1";
   const normalizedRequestPath = normalizeHrefPath(requestPath, params.baseUrl);
@@ -255,16 +256,16 @@ export function buildPropfindDocument(params: {
   if (isCollectionPath(normalizedRequestPath, paths.addressBookHomePath)) {
     const responses = [buildAddressBookHomeResponse(paths)];
     if (depthOne) {
-      responses.push(buildAddressBookResponse(paths, bookName, params.baseUrl, lastSyncedAt));
+      responses.push(buildAddressBookResponse(paths, bookName, params.baseUrl, lastSyncedAt, vcardOptions));
     }
 
     return buildMultistatus(responses);
   }
 
   if (isCollectionPath(normalizedRequestPath, paths.addressBookPath)) {
-    const responses = [buildAddressBookResponse(paths, bookName, params.baseUrl, lastSyncedAt)];
+    const responses = [buildAddressBookResponse(paths, bookName, params.baseUrl, lastSyncedAt, vcardOptions)];
     if (depthOne) {
-      responses.push(...contacts.map((contact) => buildContactResponse(paths, contact)));
+      responses.push(...contacts.map((contact) => buildContactResponse(paths, contact, vcardOptions)));
     }
 
     return buildMultistatus(responses, syncToken);
@@ -275,7 +276,7 @@ export function buildPropfindDocument(params: {
     return null;
   }
 
-  return buildMultistatus([buildContactResponse(paths, contact)]);
+  return buildMultistatus([buildContactResponse(paths, contact, vcardOptions)]);
 }
 
 export function parseCardDavReport(body: string): {
@@ -306,8 +307,9 @@ export function buildReportDocument(params: {
   contacts: ContactRecord[];
   baseUrl: string;
   lastSyncedAt: string | null;
+  vcardOptions: BuildContactVCardOptions;
 }): string {
-  const { paths, reportType, requestedHrefs, contacts, baseUrl, lastSyncedAt } = params;
+  const { paths, reportType, requestedHrefs, contacts, baseUrl, lastSyncedAt, vcardOptions } = params;
   const normalizedRequestedHrefs =
     requestedHrefs.length > 0
       ? new Set(
@@ -324,11 +326,11 @@ export function buildReportDocument(params: {
       continue;
     }
 
-    const vcard = buildContactVCard(contact);
+    const vcard = buildContactVCard(contact, vcardOptions);
     const props = [`<D:getetag>${escapeXml(getVCardEtag(vcard))}</D:getetag>`];
 
     if (reportType !== "sync-collection") {
-      props.push(`<C:address-data content-type="text/vcard" version="4.0">${escapeXml(vcard)}</C:address-data>`);
+      props.push(`<C:address-data content-type="text/vcard" version="${vcardOptions.version}">${escapeXml(vcard)}</C:address-data>`);
     }
 
     responses.push({ href, props });
